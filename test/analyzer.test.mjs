@@ -69,12 +69,14 @@ test('assigns claim confidence from evidence strength', () => {
   assert.equal(confidenceForEvidenceIds(['E3'], evidence), 'limited');
 });
 
-test('normalizer drops hallucinated refs, infers repo and sorts timeline newest first', () => {
+test('normalizer grounds claims, infers repo and sorts timeline newest first', () => {
   const fallback = { headline: 'fallback', summary: 'fallback', mainFocus: { repo: 'repo', title: 'focus', explanation: 'x' } };
   const report = normalizeReport({
     headline: 'ok',
     mainFocus: { repo: 'Goflow', evidenceIds: ['E1', 'E999'] },
     projects: [{ repo: '', title: 'Release v0.1', evidenceIds: ['E2', 'made-up'] }],
+    technical: { signals: [{ text: 'CI was hardened', evidenceIds: ['E1', 'fake'] }] },
+    observations: [{ text: 'Multiple projects were active', evidenceIds: ['E1', 'E2', 'fake'] }],
     timeline: [
       { date: '2026-08-01', label: 'older', evidenceIds: ['E2'] },
       { date: '2026-08-15', label: 'newer', evidenceIds: ['E1'] },
@@ -86,6 +88,9 @@ test('normalizer drops hallucinated refs, infers repo and sorts timeline newest 
   assert.deepEqual(report.mainFocus.evidenceIds, ['E1']);
   assert.deepEqual(report.projects[0].evidenceIds, ['E2']);
   assert.equal(report.projects[0].repo, 'CatenaNode');
+  assert.deepEqual(report.technical.signals[0].evidenceIds, ['E1']);
+  assert.deepEqual(report.observations[0].evidenceIds, ['E1', 'E2']);
+  assert.equal(report.observations[0].confidence, 'strong');
   assert.equal(report.timeline[0].date, '2026-08-15');
   assert.equal(report.timeline[1].date, '2026-08-01');
 });
