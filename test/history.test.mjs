@@ -3,7 +3,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
-import { buildSnapshot, compareSnapshots, listSnapshots, saveSnapshot } from '../src/history.mjs';
+import { buildSnapshot, compareSnapshots, getSnapshotById, listSnapshots, saveSnapshot } from '../src/history.mjs';
 
 function fixture({ commits = 3, includePrivate = false, focus = 'Goflow', extraRepo = false } = {}) {
   const repos = [
@@ -11,6 +11,11 @@ function fixture({ commits = 3, includePrivate = false, focus = 'Goflow', extraR
   ];
   if (includePrivate) repos.push({ name: 'codeproof', visibility: 'private', commits: 4, pullRequests: 1, language: 'TypeScript', stars: 0 });
   if (extraRepo) repos.push({ name: 'dev30', visibility: 'public', commits: 2, pullRequests: 1, language: 'JavaScript', stars: 0 });
+  const evidence = [
+    { id: 'E1', type: 'pull_request', repo: 'Goflow', visibility: 'public', date: '2026-08-15', title: `Ship Goflow ${commits}`, url: 'https://github.com/hstptcn5/Goflow/pull/1', ref: 1 },
+    ...(extraRepo ? [{ id: 'E2', type: 'pull_request', repo: 'dev30', visibility: 'public', date: '2026-08-16', title: 'Add history', url: 'https://github.com/hstptcn5/dev30/pull/4', ref: 4 }] : []),
+    ...(includePrivate ? [{ id: 'E3', type: 'commit', repo: 'codeproof', visibility: 'private', date: '2026-08-15', title: 'Private provenance work', url: 'https://github.com/hstptcn5/codeproof/commit/private', ref: 'private' }] : []),
+  ];
   const dataset = {
     profile: { login: 'hstptcn5', name: 'hstptcn5', avatarUrl: 'https://example.test/a.png' },
     window: { days: 30 },
@@ -20,7 +25,9 @@ function fixture({ commits = 3, includePrivate = false, focus = 'Goflow', extraR
     workUnits: [
       { repo: 'Goflow', date: '2026-08-15', title: `Ship Goflow ${commits}`, category: 'release', evidenceIds: ['E1'] },
       ...(extraRepo ? [{ repo: 'dev30', date: '2026-08-16', title: 'Add history', category: 'build', evidenceIds: ['E2'] }] : []),
+      ...(includePrivate ? [{ repo: 'codeproof', date: '2026-08-15', title: 'Private provenance work', category: 'build', evidenceIds: ['E3'] }] : []),
     ],
+    evidence,
   };
   const payload = { report: { headline: 'Recent work', mainFocus: { repo: focus, title: `${focus} focus` } } };
   return { dataset, payload };
@@ -43,12 +50,17 @@ test('snapshot store persists and deduplicates identical analyses', async () => 
   const entries = await listSnapshots({ username: 'hstptcn5', days: 30, includePrivate: false, locale: 'vi', filePath });
   assert.equal(entries.length, 1);
   assert.equal(entries[0].mainFocus.repo, 'Goflow');
+  assert.equal(entries[0].evidenceCount, 1);
+
+  const full = await getSnapshotById(first.id, { filePath });
+  assert.equal(full.schemaVersion, 2);
+  assert.equal(full.evidence[0].id, 'E1');
 
   const stored = JSON.parse(await readFile(filePath, 'utf8'));
   assert.equal(stored.snapshots.length, 1);
 });
 
-test('snapshot comparison finds new repos, activity changes, focus, and new work units', async () => {
+test('snapshot comparison finds new repos, activity changes, focus, and evidence-backed new work units', async () => {
   const beforeFixture = fixture({ commits: 3 });
   const afterFixture = fixture({ commits: 6, extraRepo: true, focus: 'dev30' });
   const before = buildSnapshot({ ...beforeFixture, locale: 'en', generatedAt: '2026-08-15T10:00:00.000Z' });
@@ -60,7 +72,9 @@ test('snapshot comparison finds new repos, activity changes, focus, and new work
   assert.equal(delta.focus.from.repo, 'Goflow');
   assert.equal(delta.focus.to.repo, 'dev30');
   assert.equal(delta.repoChanges.find((item) => item.repo === 'Goflow').commitDelta, 3);
-  assert.equal(delta.newWorkUnits.some((item) => item.repo === 'dev30' && item.title === 'Add history'), true);
+  const newUnit = delta.newWorkUnits.find((item) => item.repo === 'dev30' && item.title === 'Add history');
+  assert.equal(Boolean(newUnit), true);
+  assert.deepEqual(newUnit.evidenceIds, ['E2']);
 });
 
 test('public and private snapshot series remain separated', async () => {

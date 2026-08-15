@@ -8,10 +8,12 @@ import { collectGitHubActivity, getAuthenticatedGitHubUser, normalizeAnalysisDay
 import { getPrivateAccessDiagnostics } from './src/github-access.mjs';
 import { ANALYZER_VERSION, deterministicFallback, isValidGitHubUsername } from './src/analyzer.mjs';
 import { synthesizeDeltaWithDeepSeek, synthesizeWithDeepSeek } from './src/deepseek.mjs';
+import { synthesizeClientReportWithDeepSeek } from './src/client-report-deepseek.mjs';
+import { buildClientReportInput, clientReportStats, clientReportToMarkdown, getClientReport, listClientReports, saveClientReport } from './src/client-report.mjs';
 import { cacheStats, getCachedReport, reportCacheKey, setCachedReport } from './src/cache.mjs';
-import { buildSnapshot, compareSnapshots, historyStats, listSnapshots, saveSnapshot } from './src/history.mjs';
+import { buildSnapshot, compareSnapshots, getPreviousSnapshot, getSnapshotById, historyStats, listSnapshots, saveSnapshot } from './src/history.mjs';
 
-const PRODUCT_VERSION = '0.5.0';
+const PRODUCT_VERSION = '0.6.0';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT || 3000);
@@ -27,7 +29,7 @@ async function readJson(req) {
   let size = 0;
   for await (const chunk of req) {
     size += chunk.length;
-    if (size > 32_000) throw Object.assign(new Error('Request body too large.'), { status: 413 });
+    if (size > 64_000) throw Object.assign(new Error('Request body too large.'), { status: 413 });
     chunks.push(chunk);
   }
   if (!chunks.length) return {};
@@ -211,22 +213,87 @@ async function handleAnalyze(req, res) {
   }
 }
 
+async function assertPrivateOwner(username) {
+  const viewer = await getAuthenticatedGitHubUser();
+  if (!viewer || viewer.login.toLowerCase() !== String(username || '').toLowerCase()) {
+    throw Object.assign(new Error('Private data is only available for the connected GitHub account.'), { status: 403 });
+  }
+  return viewer;
+}
+
 async function handleHistory(url, res) {
   const username = String(url.searchParams.get('username') || '').trim();
   const locale = url.searchParams.get('locale') === 'vi' ? 'vi' : 'en';
   const days = normalizeAnalysisDays(url.searchParams.get('days'));
   const includePrivate = url.searchParams.get('includePrivate') === 'true';
   if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
-
-  if (includePrivate) {
-    const viewer = await getAuthenticatedGitHubUser();
-    if (!viewer || viewer.login.toLowerCase() !== username.toLowerCase()) {
-      return sendJson(res, 403, { error: 'Private history is only available for the connected GitHub account.' });
-    }
-  }
-
+  if (includePrivate) await assertPrivateOwner(username);
   const entries = await listSnapshots({ username, days, includePrivate, locale, limit: 24 });
   return sendJson(res, 200, { username, days, includePrivate, locale, entries });
+}
+
+async function handleCreateClientReport(req, res) {
+  const body = await readJson(req);
+  const snapshotId = String(body.snapshotId || '').trim();
+  const audience = body.audience === 'founder' ? 'founder' : 'client';
+  const snapshot = await getSnapshotById(snapshotId);
+  if (!snapshot) return sendJson(res, 404, { error: 'Snapshot not found. Analyze the account first to create one.' });
+  if (snapshot.includePrivate) await assertPrivateOwner(snapshot.username);
+  if (!snapshot.evidence?.length) {
+    return sendJson(res, 409, { error: 'This snapshot predates report-ready evidence storage. Refresh the analysis once, then generate the update again.' });
+  }
+
+  const previous = await getPreviousSnapshot(snapshot);
+  const delta = compareSnapshots(previous, snapshot);
+  const input = buildClientReportInput({ snapshot, previous, delta, audience, locale: snapshot.locale });
+  const report = await synthesizeClientReportWithDeepSeek(input);
+  const markdown = clientReportToMarkdown(report, input);
+  const saved = await saveClientReport({ snapshot, input, report, markdown });
+  return sendJson(res, 200, {
+    id: saved.id,
+    createdAt: saved.createdAt,
+    snapshotId: saved.snapshotId,
+    username: saved.username,
+    days: saved.days,
+    includePrivate: saved.includePrivate,
+    audience: saved.audience,
+    locale: saved.locale,
+    shareable: saved.shareable,
+    sharePath: saved.shareable ? `/r/${saved.id}` : null,
+    report: saved.report,
+    markdown: saved.markdown,
+    evidence: saved.evidence,
+  });
+}
+
+async function handleGetClientReport(id, res) {
+  const saved = await getClientReport(id);
+  if (!saved) return sendJson(res, 404, { error: 'Client report not found.' });
+  if (saved.includePrivate || !saved.shareable) await assertPrivateOwner(saved.username);
+  return sendJson(res, 200, {
+    id: saved.id,
+    createdAt: saved.createdAt,
+    snapshotId: saved.snapshotId,
+    username: saved.username,
+    days: saved.days,
+    includePrivate: saved.includePrivate,
+    audience: saved.audience,
+    locale: saved.locale,
+    shareable: saved.shareable,
+    sharePath: saved.shareable ? `/r/${saved.id}` : null,
+    report: saved.report,
+    markdown: saved.markdown,
+    evidence: saved.evidence,
+  });
+}
+
+async function handleListClientReports(url, res) {
+  const username = String(url.searchParams.get('username') || '').trim();
+  const includePrivate = url.searchParams.get('includePrivate') === 'true';
+  if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
+  if (includePrivate) await assertPrivateOwner(username);
+  const reports = await listClientReports({ username, includePrivate, limit: 30 });
+  return sendJson(res, 200, { username, includePrivate, reports });
 }
 
 const server = http.createServer(async (req, res) => {
@@ -241,6 +308,7 @@ const server = http.createServer(async (req, res) => {
       githubAuthenticated: Boolean(process.env.GITHUB_TOKEN),
       cache: cacheStats(),
       history: await historyStats().catch(() => ({ snapshots: 0, privateSnapshots: 0, filePath: null })),
+      clientReports: await clientReportStats().catch(() => ({ reports: 0, privateReports: 0, shareableReports: 0, filePath: null })),
     });
   }
 
@@ -254,17 +322,19 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
-  if (req.method === 'GET' && url.pathname === '/api/history') {
-    try {
-      return await handleHistory(url, res);
-    } catch (error) {
-      return sendJson(res, error.status || 500, { error: error.message || 'History lookup failed.' });
-    }
+  try {
+    if (req.method === 'GET' && url.pathname === '/api/history') return await handleHistory(url, res);
+    if (req.method === 'POST' && url.pathname === '/api/client-report') return await handleCreateClientReport(req, res);
+    if (req.method === 'GET' && url.pathname === '/api/client-reports') return await handleListClientReports(url, res);
+    const reportMatch = url.pathname.match(/^\/api\/client-report\/([0-9a-f-]+)$/i);
+    if (req.method === 'GET' && reportMatch) return await handleGetClientReport(reportMatch[1], res);
+  } catch (error) {
+    return sendJson(res, error.status || 500, { error: error.message || 'Request failed.' });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/analyze') return handleAnalyze(req, res);
 
-  if ((req.method === 'GET' || req.method === 'HEAD') && /^\/u\/[A-Za-z0-9-]+\/?$/.test(url.pathname)) {
+  if ((req.method === 'GET' || req.method === 'HEAD') && (/^\/u\/[A-Za-z0-9-]+\/?$/.test(url.pathname) || /^\/r\/[0-9a-f-]+\/?$/i.test(url.pathname))) {
     return serveAppShell(res);
   }
 

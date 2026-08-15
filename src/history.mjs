@@ -3,6 +3,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const STORE_VERSION = 1;
+const SNAPSHOT_SCHEMA_VERSION = 2;
 const DEFAULT_MAX_PER_SERIES = 24;
 const DEFAULT_MAX_TOTAL = 500;
 
@@ -16,6 +17,7 @@ function seriesKey({ username, days, includePrivate, locale }) {
 
 function stableCore(snapshot) {
   return {
+    schemaVersion: snapshot.schemaVersion || 1,
     username: snapshot.username,
     days: snapshot.days,
     includePrivate: snapshot.includePrivate,
@@ -64,6 +66,7 @@ async function writeStore(store, filePath = historyFilePath()) {
 export function buildSnapshot({ dataset, payload, locale = 'en', generatedAt = new Date().toISOString() }) {
   const snapshot = {
     id: randomUUID(),
+    schemaVersion: SNAPSHOT_SCHEMA_VERSION,
     generatedAt,
     username: dataset.profile.login,
     days: dataset.window.days,
@@ -92,6 +95,16 @@ export function buildSnapshot({ dataset, payload, locale = 'en', generatedAt = n
       category: unit.category,
       evidenceIds: (unit.evidenceIds || []).slice(0, 12),
     })),
+    evidence: dataset.evidence.slice(0, 180).map((item) => ({
+      id: item.id,
+      type: item.type,
+      repo: item.repo,
+      visibility: item.visibility || 'public',
+      date: item.date,
+      title: item.title,
+      url: item.url,
+      ref: item.ref,
+    })),
     mainFocus: {
       repo: payload.report?.mainFocus?.repo || '',
       title: payload.report?.mainFocus?.title || '',
@@ -114,6 +127,7 @@ export function snapshotSummary(snapshot) {
     mainFocus: snapshot.mainFocus,
     headline: snapshot.headline,
     workMix: snapshot.workMix,
+    evidenceCount: snapshot.evidence?.length || 0,
   };
 }
 
@@ -164,6 +178,23 @@ export async function listSnapshots({ username, days = 30, includePrivate = fals
     .map(snapshotSummary);
 }
 
+export async function getSnapshotById(id, { filePath = historyFilePath() } = {}) {
+  const store = await readStore(filePath);
+  return store.snapshots.find((item) => item.id === id) || null;
+}
+
+export async function getPreviousSnapshot(snapshot, { filePath = historyFilePath() } = {}) {
+  if (!snapshot) return null;
+  const store = await readStore(filePath);
+  const key = seriesKey(snapshot);
+  const series = store.snapshots
+    .filter((item) => seriesKey(item) === key)
+    .sort((a, b) => b.generatedAt.localeCompare(a.generatedAt));
+  const index = series.findIndex((item) => item.id === snapshot.id);
+  if (index < 0) return null;
+  return series[index + 1] || null;
+}
+
 function workUnitKey(unit) {
   return `${String(unit.repo || '').toLowerCase()}::${String(unit.title || '').trim().toLowerCase()}`;
 }
@@ -204,7 +235,7 @@ export function compareSnapshots(previous, current) {
   const currentUnits = new Map((current.workUnits || []).map((unit) => [workUnitKey(unit), unit]));
   const newWorkUnits = [...currentUnits.entries()]
     .filter(([key]) => !previousUnits.has(key))
-    .map(([, unit]) => ({ repo: unit.repo, date: unit.date, title: unit.title, category: unit.category }))
+    .map(([, unit]) => ({ repo: unit.repo, date: unit.date, title: unit.title, category: unit.category, evidenceIds: unit.evidenceIds || [] }))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)))
     .slice(0, 16);
 
