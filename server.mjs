@@ -5,11 +5,12 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { collectGitHubActivity, getAuthenticatedGitHubUser, normalizeAnalysisDays } from './src/github.mjs';
+import { getPrivateAccessDiagnostics } from './src/github-access.mjs';
 import { ANALYZER_VERSION, deterministicFallback, isValidGitHubUsername } from './src/analyzer.mjs';
 import { synthesizeWithDeepSeek } from './src/deepseek.mjs';
 import { cacheStats, getCachedReport, reportCacheKey, setCachedReport } from './src/cache.mjs';
 
-const PRODUCT_VERSION = '0.4.0';
+const PRODUCT_VERSION = '0.4.1';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT || 3000);
@@ -182,9 +183,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/me') {
     try {
       const viewer = await getAuthenticatedGitHubUser();
-      return sendJson(res, 200, { connected: Boolean(viewer), viewer });
+      const access = viewer ? await getPrivateAccessDiagnostics() : null;
+      return sendJson(res, 200, { connected: Boolean(viewer), viewer, access });
     } catch (error) {
-      return sendJson(res, 502, { connected: false, viewer: null, error: error.message });
+      return sendJson(res, 502, { connected: false, viewer: null, access: null, error: error.message });
     }
   }
 
