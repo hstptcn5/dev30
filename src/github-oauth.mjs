@@ -1,3 +1,4 @@
+import './env.mjs';
 import { createHash, randomBytes } from 'node:crypto';
 
 const AUTHORIZE_URL = 'https://github.com/login/oauth/authorize';
