@@ -2,6 +2,12 @@ import { buildWorkUnits, summarizeWorkMix } from './analyzer.mjs';
 
 const API_ROOT = 'https://api.github.com';
 const API_VERSION = '2026-03-10';
+const SUPPORTED_DAYS = new Set([7, 30, 90]);
+
+export function normalizeAnalysisDays(value) {
+  const days = Number(value);
+  return SUPPORTED_DAYS.has(days) ? days : 30;
+}
 
 function daysAgoIso(days) {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
@@ -15,7 +21,7 @@ function headers() {
   const result = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': API_VERSION,
-    'User-Agent': 'dev30/0.2',
+    'User-Agent': 'dev30/0.4',
   };
   if (process.env.GITHUB_TOKEN) result.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
   return result;
@@ -59,6 +65,16 @@ async function fetchPaginated(pathForPage, { maxPages = 3 } = {}) {
     if (page === maxPages) truncated = true;
   }
   return { data: all, rateLimit: lastRateLimit, truncated };
+}
+
+export async function getAuthenticatedGitHubUser() {
+  if (!process.env.GITHUB_TOKEN) return null;
+  const result = await githubFetch('/user');
+  return {
+    login: result.data.login,
+    name: result.data.name || '',
+    avatarUrl: result.data.avatar_url,
+  };
 }
 
 function repoEventCount(events, fullName) {
@@ -113,6 +129,7 @@ function commitEvidence(commit, repo, detail, id) {
     type: 'commit',
     repo: repo.name,
     repoFullName: repo.fullName,
+    visibility: repo.visibility,
     date: dayOnly(date),
     title: message,
     url: `https://github.com/${repo.fullName}/commit/${commit.sha}`,
@@ -123,22 +140,35 @@ function commitEvidence(commit, repo, detail, id) {
   };
 }
 
-export async function collectGitHubActivity(username) {
-  const since = daysAgoIso(30);
+export async function collectGitHubActivity(username, { days = 30, includePrivate = false } = {}) {
+  const analysisDays = normalizeAnalysisDays(days);
+  const since = daysAgoIso(analysisDays);
   const authenticated = Boolean(process.env.GITHUB_TOKEN);
   let latestRateLimit = null;
+  let profile;
+  let repoPathForPage;
 
-  const profileResult = await githubFetch(`/users/${encodeURIComponent(username)}`);
-  latestRateLimit = profileResult.rateLimit;
-  const profile = profileResult.data;
+  if (includePrivate) {
+    if (!authenticated) throw Object.assign(new Error('Private analysis requires GITHUB_TOKEN.'), { status: 401 });
+    const viewerResult = await githubFetch('/user');
+    latestRateLimit = viewerResult.rateLimit;
+    if (viewerResult.data.login?.toLowerCase() !== username.toLowerCase()) {
+      throw Object.assign(new Error('Private analysis is only allowed for the GitHub account connected by GITHUB_TOKEN.'), { status: 403 });
+    }
+    profile = viewerResult.data;
+    repoPathForPage = (page) => `/user/repos?per_page=100&page=${page}&sort=pushed&direction=desc&affiliation=owner&visibility=all`;
+  } else {
+    const profileResult = await githubFetch(`/users/${encodeURIComponent(username)}`);
+    latestRateLimit = profileResult.rateLimit;
+    profile = profileResult.data;
+    repoPathForPage = (page) => `/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=pushed&direction=desc&type=owner`;
+  }
 
   const repoPages = authenticated ? 5 : 1;
-  const reposResult = await fetchPaginated(
-    (page) => `/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=pushed&direction=desc&type=owner`,
-    { maxPages: repoPages },
-  );
+  const reposResult = await fetchPaginated(repoPathForPage, { maxPages: repoPages });
   latestRateLimit = reposResult.rateLimit;
 
+  // GitHub's public event feed is useful for recency/ranking but does not cover a full 90-day window.
   const eventPages = authenticated ? 3 : 1;
   const eventResult = await fetchPaginated(
     (page) => `/users/${encodeURIComponent(username)}/events/public?per_page=100&page=${page}`,
@@ -192,15 +222,7 @@ export async function collectGitHubActivity(username) {
     }
 
     if (!commits.length && !pulls.length && !eventCount && repo.created_at < since) continue;
-
-    scanned.push({
-      repo,
-      eventCount,
-      commits,
-      pulls,
-      commitsTruncated,
-      pullsTruncated,
-    });
+    scanned.push({ repo, eventCount, commits, pulls, commitsTruncated, pullsTruncated });
   }
 
   scanned.sort((a, b) => {
@@ -221,6 +243,7 @@ export async function collectGitHubActivity(username) {
   for (const item of scanned) {
     const { repo, eventCount, commits, pulls, commitsTruncated, pullsTruncated } = item;
     const deepDive = deepDiveNames.has(repo.full_name);
+    const visibility = repo.private ? 'private' : 'public';
     const commitDetails = deepDive ? await fetchCommitDetails(repo.full_name, commits, detailCommitsPerRepo) : [];
     const detailBySha = new Map(commitDetails.map((detail) => [detail.sha, detail]));
     const prFiles = new Map();
@@ -237,6 +260,7 @@ export async function collectGitHubActivity(username) {
         type: 'pull_request',
         repo: repo.name,
         repoFullName: repo.full_name,
+        visibility,
         date: dayOnly(pr.merged_at || pr.closed_at || pr.updated_at || pr.created_at),
         title: pr.title,
         url: pr.html_url,
@@ -251,12 +275,14 @@ export async function collectGitHubActivity(username) {
       evidence.push(commitEvidence(commit, {
         name: repo.name,
         fullName: repo.full_name,
+        visibility,
       }, detailBySha.get(commit.sha), `E${evidenceNumber++}`));
     }
 
     repoSummaries.push({
       name: repo.name,
       fullName: repo.full_name,
+      visibility,
       description: repo.description || '',
       language: repo.language || null,
       topics: repo.topics || [],
@@ -287,7 +313,7 @@ export async function collectGitHubActivity(username) {
   const workUnits = buildWorkUnits(boundedEvidence);
 
   return {
-    window: { since, until: new Date().toISOString(), days: 30 },
+    window: { since, until: new Date().toISOString(), days: analysisDays },
     profile: {
       login: profile.login,
       name: profile.name || '',
@@ -295,6 +321,7 @@ export async function collectGitHubActivity(username) {
       bio: profile.bio || '',
       htmlUrl: profile.html_url,
       publicRepos: profile.public_repos || 0,
+      privateRepos: includePrivate ? (profile.total_private_repos || 0) : 0,
       followers: profile.followers || 0,
     },
     repos: repoSummaries,
@@ -303,16 +330,18 @@ export async function collectGitHubActivity(username) {
     workMix: summarizeWorkMix(workUnits),
     collector: {
       authenticated,
+      includePrivate,
       githubRateLimit: latestRateLimit,
       candidateRepos: candidates.length,
       selectedRepos: repoSummaries.length,
       deepDiveRepos: deepDiveNames.size,
       eventCount: events.length,
+      eventsCoverFullWindow: analysisDays <= 30,
       eventPagesTruncated: eventResult.truncated,
       repoPagesTruncated: reposResult.truncated,
       commitCountsTruncated: repoSummaries.filter((repo) => repo.commitsTruncated).map((repo) => repo.name),
       prCountsTruncated: repoSummaries.filter((repo) => repo.pullsTruncated).map((repo) => repo.name),
-      mode: authenticated ? 'authenticated' : 'public-lite',
+      mode: includePrivate ? 'private-opt-in' : (authenticated ? 'authenticated-public' : 'public-lite'),
     },
   };
 }
