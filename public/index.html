@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Dev30 turns recent GitHub activity into an evidence-backed developer work report." />
+  <meta name="description" content="Dev30 turns recent GitHub activity into an evidence-backed developer work report with persistent snapshot history." />
   <title>Dev30 — Evidence-backed developer activity</title>
   <link rel="stylesheet" href="/styles.css" />
 </head>
@@ -19,7 +19,7 @@
     <section class="hero">
       <p class="eyebrow">GitHub activity → understandable work</p>
       <h1>See what a developer <em>actually shipped.</em></h1>
-      <p class="hero-copy">Dev30 reconstructs recent GitHub work into plain-language project summaries, technical signals, a development timeline, and evidence you can inspect.</p>
+      <p class="hero-copy">Dev30 reconstructs recent GitHub work into plain-language project summaries, technical signals, a development timeline, evidence you can inspect, and snapshots that show how the work changes over time.</p>
 
       <form id="analyze-form" class="search-card">
         <div class="search-row">
@@ -38,7 +38,7 @@
         </div>
         <div class="search-foot">
           <button class="example-link" type="button" data-example="hstptcn5">Try hstptcn5</button>
-          <span>Public reports get a shareable <code>/u/username</code> URL.</span>
+          <span>Fresh reports are saved to local snapshot history. Public reports keep a shareable <code>/u/username</code> URL.</span>
         </div>
       </form>
 
@@ -46,7 +46,7 @@
         <div>
           <span class="account-kicker">Connected GitHub</span>
           <strong id="account-name"></strong>
-          <p>Analyze your own account with private repositories included. Private analysis is opt-in and is never given a public share URL.</p>
+          <p>Analyze your own account with private repositories included. Private reports and their snapshot history stay local to this Dev30 instance and never receive a public share URL.</p>
         </div>
         <button id="account-button" type="button">Analyze my account</button>
       </section>
@@ -55,7 +55,7 @@
     <section class="value-strip" aria-label="Dev30 product features">
       <div><strong>Evidence-first</strong><span>Claims link back to PRs and commits.</span></div>
       <div><strong>7 / 30 / 90 days</strong><span>Zoom from weekly shipping to quarterly direction.</span></div>
-      <div><strong>Cached reports</strong><span>Repeat views avoid unnecessary LLM calls.</span></div>
+      <div><strong>Snapshot history</strong><span>See what changed since the previous report.</span></div>
     </section>
 
     <section id="status" class="status hidden" aria-live="polite"></section>
@@ -63,7 +63,7 @@
 
     <footer>
       <span>Dev30</span>
-      <span>Claims should be explainable. Evidence should be one click away.</span>
+      <span>Claims should be explainable. Progress should be comparable.</span>
     </footer>
   </main>
   <script type="module" src="/app.js"></script>
