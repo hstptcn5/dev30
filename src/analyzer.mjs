@@ -31,16 +31,21 @@ function fileCategory(file) {
   return 'build';
 }
 
-export function classifyWork({ message = '', files = [], prTitle = '' }) {
-  const title = String(prTitle || message || '').trim();
+function titleCategory(value) {
+  const title = String(value || '').trim();
   for (const [category, rule] of TITLE_RULES) {
     if (rule.test(title)) return category;
   }
-
   if (/\b(e2e|end[- ]to[- ]end|test coverage|playwright|cypress|test suite)\b/i.test(title)) return 'test';
   if (/\b(ci\/cd|ci gating|github actions?|release|publish|artifact|packaging|deployment|deploy)\b/i.test(title)) return 'release';
   if (/\b(recovery|rollback|retry|security|hardening|reliability|validation|migration|concurrency|timeout|health check)\b/i.test(title)) return 'harden';
   if (/\b(dependency|dependencies|cleanup|refactor|lint|format|housekeeping)\b/i.test(title)) return 'maintain';
+  return 'build';
+}
+
+export function classifyWork({ message = '', files = [], prTitle = '' }) {
+  const primary = titleCategory(prTitle || message);
+  if (primary !== 'build') return primary;
 
   const categories = files.map(fileCategory);
   if (categories.length) {
@@ -53,6 +58,20 @@ export function classifyWork({ message = '', files = [], prTitle = '' }) {
   }
 
   return 'build';
+}
+
+export function workCategoryWeights({ title = '', message = '', files = [], prTitle = '' }) {
+  const scores = Object.fromEntries(CATEGORY_ORDER.map((category) => [category, 0]));
+  const titleSignal = titleCategory(prTitle || title || message);
+  const uniqueFiles = [...new Set((files || []).filter(Boolean))];
+
+  // The title is a strong intent signal, while changed files reveal mixed work inside a unit.
+  // Normalize per unit so a huge PR does not dominate the whole 30-day report just by file count.
+  scores[titleSignal] += uniqueFiles.length ? 2 : 1;
+  for (const file of uniqueFiles) scores[fileCategory(file)] += 1;
+
+  const total = Object.values(scores).reduce((sum, value) => sum + value, 0) || 1;
+  return Object.fromEntries(CATEGORY_ORDER.map((category) => [category, scores[category] / total]));
 }
 
 function normalizedTitle(value) {
@@ -119,7 +138,11 @@ export function buildWorkUnits(evidence) {
   }
 
   return units
-    .map((unit) => ({ ...unit, category: classifyWork({ message: unit.title, prTitle: unit.type === 'pull_request' ? unit.title : '', files: unit.files }) }))
+    .map((unit) => ({
+      ...unit,
+      category: classifyWork({ message: unit.title, prTitle: unit.type === 'pull_request' ? unit.title : '', files: unit.files }),
+      categoryMix: workCategoryWeights({ title: unit.title, prTitle: unit.type === 'pull_request' ? unit.title : '', files: unit.files }),
+    }))
     .sort((a, b) => String(b.date).localeCompare(String(a.date)) || a.id.localeCompare(b.id));
 }
 
@@ -145,12 +168,13 @@ function percentagesFromCounts(counts) {
 export function summarizeWorkMix(items) {
   const counts = Object.fromEntries(CATEGORY_ORDER.map((category) => [category, 0]));
   for (const item of items) {
-    const category = item.category || classifyWork({
+    const mix = item.categoryMix || workCategoryWeights({
+      title: item.title,
       message: item.title,
       files: item.files || [],
       prTitle: item.type === 'pull_request' ? item.title : '',
     });
-    counts[category] = (counts[category] || 0) + 1;
+    for (const category of CATEGORY_ORDER) counts[category] += mix[category] || 0;
   }
   return percentagesFromCounts(counts);
 }
