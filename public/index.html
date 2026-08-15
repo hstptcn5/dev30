@@ -1,0 +1,51 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="description" content="Dev30 explains what a GitHub developer actually worked on in the last 30 days." />
+  <title>Dev30 — 30-day developer intelligence</title>
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div class="ambient ambient-a"></div>
+  <div class="ambient ambient-b"></div>
+  <main class="shell">
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Dev30 home"><span class="brand-mark">D30</span><span>Dev30</span></a>
+      <span class="beta">evidence-first beta</span>
+    </header>
+
+    <section class="hero">
+      <p class="eyebrow">GitHub → understandable work</p>
+      <h1>What did this developer <em>actually</em> work on?</h1>
+      <p class="hero-copy">Enter a GitHub username. Dev30 reconstructs the last 30 days into plain-language work clusters, technical signals, and clickable evidence.</p>
+
+      <form id="analyze-form" class="search-card">
+        <div class="search-row">
+          <span class="prefix">github.com/</span>
+          <input id="username" name="username" autocomplete="off" spellcheck="false" maxlength="39" placeholder="hstptcn5" aria-label="GitHub username" />
+          <select id="locale" aria-label="Report language">
+            <option value="en">English</option>
+            <option value="vi">Tiếng Việt</option>
+          </select>
+          <button id="analyze-button" type="submit">Analyze 30 days</button>
+        </div>
+        <div class="search-foot">
+          <button class="example-link" type="button" data-example="hstptcn5">Try hstptcn5</button>
+          <span>Public GitHub data only in this MVP</span>
+        </div>
+      </form>
+    </section>
+
+    <section id="status" class="status hidden" aria-live="polite"></section>
+    <section id="report" class="report hidden" aria-live="polite"></section>
+
+    <footer>
+      <span>Dev30</span>
+      <span>Claims should be explainable. Evidence should be one click away.</span>
+    </footer>
+  </main>
+  <script type="module" src="/app.js"></script>
+</body>
+</html>
