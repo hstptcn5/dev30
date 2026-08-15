@@ -166,9 +166,10 @@ function normalizeEvidenceIds(value, allowedIds) {
 }
 
 function inferRepo(explicitRepo, evidenceIds, evidence) {
-  if (explicitRepo && explicitRepo !== 'Unknown') return String(explicitRepo);
   const repos = [...new Set(evidenceIds.map((id) => evidence.find((item) => item.id === id)?.repo).filter(Boolean))];
-  return repos.length === 1 ? repos[0] : String(explicitRepo || 'Unknown');
+  if (repos.length === 1) return repos[0];
+  if (explicitRepo && explicitRepo !== 'Unknown') return String(explicitRepo);
+  return String(explicitRepo || 'Unknown');
 }
 
 export function confidenceForEvidenceIds(ids, evidence) {
@@ -177,6 +178,19 @@ export function confidenceForEvidenceIds(ids, evidence) {
   if (prCount >= 2 || items.length >= 4) return 'strong';
   if (prCount >= 1 || items.length >= 2) return 'moderate';
   return 'limited';
+}
+
+function normalizeClaims(value, allowedIds, evidence, max = 10) {
+  if (!Array.isArray(value)) return [];
+  return value.map((item) => {
+    if (typeof item === 'string') return { text: item.trim(), evidenceIds: [], confidence: 'limited' };
+    const evidenceIds = normalizeEvidenceIds(item?.evidenceIds, allowedIds);
+    return {
+      text: String(item?.text || item?.claim || '').trim(),
+      evidenceIds,
+      confidence: confidenceForEvidenceIds(evidenceIds, evidence),
+    };
+  }).filter((item) => item.text).slice(0, max);
 }
 
 export function normalizeReport(report, evidence, fallback) {
@@ -225,9 +239,9 @@ export function normalizeReport(report, evidence, fallback) {
       areas: normalizeArray(raw.technical?.areas, 10),
       stack: normalizeArray(raw.technical?.stack, 12),
       trajectory: String(raw.technical?.trajectory || ''),
-      signals: normalizeArray(raw.technical?.signals, 10),
+      signals: normalizeClaims(raw.technical?.signals, allowedIds, evidence, 10),
     },
-    observations: normalizeArray(raw.observations, 8),
+    observations: normalizeClaims(raw.observations, allowedIds, evidence, 8),
     timeline,
   };
 }
