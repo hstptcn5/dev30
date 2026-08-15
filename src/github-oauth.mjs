@@ -13,6 +13,11 @@ export function githubAppConfigured() {
   return Boolean(process.env.GITHUB_APP_CLIENT_ID && process.env.GITHUB_APP_CLIENT_SECRET);
 }
 
+export function githubAppInstallUrl() {
+  const slug = String(process.env.GITHUB_APP_SLUG || '').trim();
+  return slug ? `https://github.com/apps/${encodeURIComponent(slug)}/installations/new` : null;
+}
+
 export function defaultCallbackUrl() {
   if (process.env.GITHUB_OAUTH_CALLBACK_URL) return process.env.GITHUB_OAUTH_CALLBACK_URL;
   return `http://localhost:${Number(process.env.PORT || 3000)}/auth/github/callback`;
