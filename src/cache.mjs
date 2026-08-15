@@ -6,8 +6,9 @@ export function cacheTtlMs() {
   return Math.min(minutes, 24 * 60) * 60 * 1000;
 }
 
-export function reportCacheKey({ username, days, locale, includePrivate, analyzerVersion, model }) {
+export function reportCacheKey({ username, days, locale, includePrivate, analyzerVersion, model, workspaceId }) {
   return [
+    includePrivate ? (workspaceId || 'legacy-private') : 'public',
     String(username || '').toLowerCase(),
     Number(days || 30),
     locale === 'vi' ? 'vi' : 'en',
