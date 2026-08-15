@@ -25,6 +25,8 @@ test('classifies explicit engineering semantics before generic build work', () =
   assert.equal(classifyWork({ message: 'test: add final DailyOps appliance E2E' }), 'test');
   assert.equal(classifyWork({ message: 'ci: add and harden Windows pilot appliance' }), 'release');
   assert.equal(classifyWork({ files: ['tests/e2e/login.spec.ts'] }), 'test');
+  assert.equal(classifyWork({ files: ['internal/scheduler/service_test.go'] }), 'test');
+  assert.equal(classifyWork({ files: ['tests/test_api.py'] }), 'test');
   assert.equal(classifyWork({ files: ['.github/workflows/release.yml'] }), 'release');
   assert.equal(classifyWork({ files: ['docs/setup.md'] }), 'docs');
   assert.equal(classifyWork({ message: 'chore: bump dependencies' }), 'maintain');
@@ -48,17 +50,20 @@ test('work mix uses stable percentages that sum to 100', () => {
 
 test('mixed feature units contribute to test and release work instead of one exclusive bucket', () => {
   const weights = workCategoryWeights({
-    title: 'feat: ship scheduler',
+    title: 'feat: deliver productization beta',
     files: [
       'internal/scheduler/run.go',
-      'internal/scheduler/state.go',
-      'tests/e2e/scheduler.spec.ts',
+      'internal/scheduler/service_test.go',
+      'internal/api/router_test.go',
+      'ui/tests/e2e/appliance.spec.js',
       '.github/workflows/ci.yml',
+      'docs/BETA_OPERATIONS.md',
     ],
   });
   assert.ok(weights.build > 0);
   assert.ok(weights.test > 0);
   assert.ok(weights.release > 0);
+  assert.ok(weights.docs > 0);
   assert.equal(Math.round(Object.values(weights).reduce((a, b) => a + b, 0) * 1000), 1000);
 });
 
