@@ -5,7 +5,7 @@ import { readFile, stat } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { collectGitHubActivity } from './src/github.mjs';
-import { deterministicFallback, isValidGitHubUsername } from './src/analyzer.mjs';
+import { ANALYZER_VERSION, deterministicFallback, isValidGitHubUsername } from './src/analyzer.mjs';
 import { synthesizeWithDeepSeek } from './src/deepseek.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -82,6 +82,7 @@ async function handleAnalyze(req, res) {
       evidence: dataset.evidence,
       repos: dataset.repos.map(({ recentCommitMessages, recentPrTitles, changedFiles, ...repo }) => repo),
       meta: {
+        analyzerVersion: ANALYZER_VERSION,
         analysisMode: synthesis.mode,
         model: synthesis.model,
         notice: synthesis.notice,
@@ -104,6 +105,7 @@ const server = http.createServer(async (req, res) => {
   if (req.method === 'GET' && url.pathname === '/api/health') {
     return sendJson(res, 200, {
       ok: true,
+      analyzerVersion: ANALYZER_VERSION,
       deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
       githubAuthenticated: Boolean(process.env.GITHUB_TOKEN),
     });
@@ -115,4 +117,4 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 404, { error: 'Not found.' });
 });
 
-server.listen(port, () => console.log(`Dev30 running at http://localhost:${port}`));
+server.listen(port, () => console.log(`Dev30 analyzer ${ANALYZER_VERSION} running at http://localhost:${port}`));
