@@ -1,30 +1,30 @@
 # Dev30
 
-**Dev30 answers one question:** what did this GitHub developer actually work on during the last 30 days?
+**Dev30 turns recent GitHub activity into an evidence-backed work report.**
 
-It is not a contribution counter and it does not score developers. Dev30 collects public GitHub evidence first, derives deterministic engineering signals, then asks DeepSeek to turn that evidence into two views:
+It is not a contribution counter and it does not score developers. Dev30 collects GitHub evidence first, derives deterministic engineering signals, then asks DeepSeek to explain the work in two views:
 
-- **Explain simply** — a plain-language brief for clients, founders, recruiters, and non-technical readers.
-- **Technical view** — work mix, repository activity, technologies, development trajectory, timeline, and the evidence behind the claims.
+- **Explain simply** — plain-language project summaries for non-technical readers.
+- **Technical view** — engineering work mix, repository activity, technologies, development trajectory, timeline, and evidence.
 
-Every concrete claim produced by the LLM is constrained to evidence IDs that were actually collected from GitHub. The UI exposes those commits and pull requests as clickable evidence.
+Every material LLM claim is constrained to GitHub evidence IDs that Dev30 actually collected.
 
-## MVP flow
+## Product flow
 
 ```text
-GitHub username
+GitHub username + 7/30/90-day window
     ↓
 GitHub REST collector
     ↓
-30-day repositories + commits + PRs + sampled changed-file metadata
+Repositories + commits + PRs + sampled changed-file metadata
     ↓
-Deterministic work classification
+Deterministic work units and engineering mix
     ↓
-Evidence ledger (E1, E2, ...)
+Evidence ledger
     ↓
 DeepSeek JSON synthesis
     ↓
-Simple view / Technical view / Evidence
+Shareable public report / private opt-in account report
 ```
 
 ## Run locally
@@ -37,31 +37,38 @@ cp .env.example .env
 npm start
 ```
 
-PowerShell can also set secrets directly:
-
-```powershell
-$env:DEEPSEEK_API_KEY="..."
-$env:GITHUB_TOKEN="..."
-npm start
-```
-
 Open `http://localhost:3000`.
 
-The MVP currently has no npm runtime dependencies; it uses the Node.js standard library and native `fetch`.
+The app has no npm runtime dependencies; it uses the Node.js standard library and native `fetch`.
+
+## Product layer
+
+- Public reports support **7 / 30 / 90 day** windows.
+- Public reports receive a shareable route such as `/u/hstptcn5?days=30&lang=vi`.
+- Reports are cached in memory for `CACHE_TTL_MINUTES` (default 360) to avoid unnecessary GitHub and DeepSeek calls. Cache is process-local and disappears after restart.
+- `Refresh` bypasses the cache and rebuilds a report.
+- If `GITHUB_TOKEN` is configured, `/api/me` exposes the connected account identity and the UI offers **Analyze my account**.
+- Private repository analysis is explicit opt-in, only works for the account represented by `GITHUB_TOKEN`, and is not assigned a public share URL.
+- Private analysis may send repository names, commit/PR titles, and selected changed filenames to the configured DeepSeek API. It does not silently enable for ordinary public lookups.
 
 ## Configuration
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
-| `DEEPSEEK_API_KEY` | For LLM mode | — | DeepSeek API credential; server-side only |
+| `DEEPSEEK_API_KEY` | For LLM mode | — | DeepSeek credential; server-side only |
 | `DEEPSEEK_MODEL` | No | `deepseek-v4-flash` | Report synthesis model |
 | `DEEPSEEK_THINKING` | No | `disabled` | Set `enabled` for reasoning mode |
-| `GITHUB_TOKEN` | Recommended | — | Higher GitHub API budget and richer collection |
-| `MAX_ACTIVE_REPOS` | No | `5` | Maximum recently active repos to enrich |
-| `MAX_DETAIL_COMMITS` | No | `6` | Commit-detail/file-path evidence budget |
+| `GITHUB_TOKEN` | Recommended | — | Higher API budget; also enables explicit connected-account mode |
+| `CACHE_TTL_MINUTES` | No | `360` | In-memory report cache lifetime |
+| `MAX_DISCOVERED_REPOS` | No | `15` | Maximum active repositories to scan |
+| `MAX_DEEP_DIVE_REPOS` | No | `5` | Repositories selected for changed-file inspection |
+| `MAX_COMMIT_PAGES` | No | `5` | Commit-list pagination budget per repo |
+| `MAX_PR_PAGES` | No | `2` | Pull-request pagination budget per repo |
+| `MAX_DETAIL_COMMITS_PER_REPO` | No | `3` | Commit-detail budget for deep-dive repos |
+| `MAX_DETAIL_PRS_PER_REPO` | No | `6` | PR-file budget for deep-dive repos |
 | `PORT` | No | `3000` | HTTP port |
 
-Without `DEEPSEEK_API_KEY`, Dev30 returns a clearly labelled deterministic fallback. Without `GITHUB_TOKEN`, it runs in **public-lite** mode and intentionally reduces GitHub requests.
+Without `DEEPSEEK_API_KEY`, Dev30 returns a clearly labelled deterministic fallback. Without `GITHUB_TOKEN`, public lookup runs in a tighter **public-lite** collection mode.
 
 ## API
 
@@ -70,17 +77,26 @@ Without `DEEPSEEK_API_KEY`, Dev30 returns a clearly labelled deterministic fallb
 ```json
 {
   "username": "hstptcn5",
-  "locale": "vi"
+  "locale": "vi",
+  "days": 30,
+  "includePrivate": false,
+  "refresh": false
 }
 ```
 
-The response includes the profile, fixed 30-day window, report, deterministic work mix, repository metrics, evidence ledger, and collector/model metadata.
+Supported windows are `7`, `30`, and `90`; unsupported values normalize to `30`.
 
-`GET /api/health` reports whether DeepSeek and authenticated GitHub collection are configured without exposing secrets.
+`GET /api/health` reports product/analyzer version, DeepSeek/GitHub configuration, and cache stats without exposing secrets.
 
-## Evidence rules
+`GET /api/me` returns the GitHub identity represented by the configured server-side token, or `connected: false` when no token is configured.
 
-The DeepSeek prompt prohibits inventing work, technologies, users, launches, business impact, seniority, or hire/no-hire judgments. Material work claims should cite supplied evidence IDs. Server-side normalization removes evidence references the collector never issued.
+## Evidence and privacy rules
+
+- GitHub evidence remains the source of truth; DeepSeek interprets it.
+- The prompt prohibits talent scores, hire/no-hire judgments, permanent skill/personality claims, and unsupported impact claims.
+- Server-side normalization removes evidence IDs that were never collected.
+- Public lookup never enumerates private repositories.
+- Private analysis requires an explicit request and a token whose authenticated login matches the requested username.
 
 ## Validation
 
@@ -89,16 +105,10 @@ npm test
 npm run check
 ```
 
-## MVP limitations
+## Current limitations
 
-- Public GitHub activity only; private repositories will require GitHub OAuth/App authorization.
-- Collection is intentionally bounded; this is a recent-work reconstruction, not a billing/audit ledger.
+- Cache is in-memory only; a production deployment should use a shared persistent cache/database.
+- The current connected-account mode uses one server-side token. SaaS multi-user private analysis still requires GitHub OAuth or a GitHub App.
+- GitHub public events do not provide a complete 90-day history; 90-day reports rely primarily on repository, commit, and PR queries for the older part of the window.
+- Collection remains intentionally bounded and is not an audit/billing ledger.
 - Changed-file metadata is sampled under a configurable request budget.
-- Repository descriptions, commit messages, and PR titles are treated as evidence, not instructions to the LLM.
-
-## Next product steps
-
-1. GitHub OAuth / GitHub App for private repositories and user-owned reports.
-2. Cached snapshots so public usernames do not repeatedly consume GitHub + DeepSeek calls.
-3. Weekly client-facing reports and shareable permanent report URLs.
-4. Selective PR diff/test retrieval before deeper architectural claims.
