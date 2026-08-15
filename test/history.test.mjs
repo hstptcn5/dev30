@@ -53,7 +53,7 @@ test('snapshot store persists and deduplicates identical analyses', async () => 
   assert.equal(entries[0].evidenceCount, 1);
 
   const full = await getSnapshotById(first.id, { filePath });
-  assert.equal(full.schemaVersion, 2);
+  assert.equal(full.schemaVersion, 3);
   assert.equal(full.evidence[0].id, 'E1');
 
   const stored = JSON.parse(await readFile(filePath, 'utf8'));

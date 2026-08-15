@@ -1,4 +1,5 @@
 import { buildWorkUnits, summarizeWorkMix } from './analyzer.mjs';
+import { currentGitHubToken, currentWorkspaceId } from './github-auth-context.mjs';
 
 const API_ROOT = 'https://api.github.com';
 const API_VERSION = '2026-03-10';
@@ -21,9 +22,10 @@ function headers() {
   const result = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': API_VERSION,
-    'User-Agent': 'dev30/0.4',
+    'User-Agent': 'dev30/0.7',
   };
-  if (process.env.GITHUB_TOKEN) result.Authorization = `Bearer ${process.env.GITHUB_TOKEN}`;
+  const token = currentGitHubToken();
+  if (token) result.Authorization = `Bearer ${token}`;
   return result;
 }
 
@@ -68,12 +70,14 @@ async function fetchPaginated(pathForPage, { maxPages = 3 } = {}) {
 }
 
 export async function getAuthenticatedGitHubUser() {
-  if (!process.env.GITHUB_TOKEN) return null;
+  if (!currentGitHubToken()) return null;
   const result = await githubFetch('/user');
   return {
+    id: result.data.id,
     login: result.data.login,
     name: result.data.name || '',
     avatarUrl: result.data.avatar_url,
+    htmlUrl: result.data.html_url || '',
   };
 }
 
@@ -143,17 +147,17 @@ function commitEvidence(commit, repo, detail, id) {
 export async function collectGitHubActivity(username, { days = 30, includePrivate = false } = {}) {
   const analysisDays = normalizeAnalysisDays(days);
   const since = daysAgoIso(analysisDays);
-  const authenticated = Boolean(process.env.GITHUB_TOKEN);
+  const authenticated = Boolean(currentGitHubToken());
   let latestRateLimit = null;
   let profile;
   let repoPathForPage;
 
   if (includePrivate) {
-    if (!authenticated) throw Object.assign(new Error('Private analysis requires GITHUB_TOKEN.'), { status: 401 });
+    if (!authenticated) throw Object.assign(new Error('Private analysis requires a connected GitHub account.'), { status: 401 });
     const viewerResult = await githubFetch('/user');
     latestRateLimit = viewerResult.rateLimit;
     if (viewerResult.data.login?.toLowerCase() !== username.toLowerCase()) {
-      throw Object.assign(new Error('Private analysis is only allowed for the GitHub account connected by GITHUB_TOKEN.'), { status: 403 });
+      throw Object.assign(new Error('Private analysis is only allowed for the connected GitHub account.'), { status: 403 });
     }
     profile = viewerResult.data;
     repoPathForPage = (page) => `/user/repos?per_page=100&page=${page}&sort=pushed&direction=desc&affiliation=owner&visibility=all`;
@@ -168,7 +172,6 @@ export async function collectGitHubActivity(username, { days = 30, includePrivat
   const reposResult = await fetchPaginated(repoPathForPage, { maxPages: repoPages });
   latestRateLimit = reposResult.rateLimit;
 
-  // GitHub's public event feed is useful for recency/ranking but does not cover a full 90-day window.
   const eventPages = authenticated ? 3 : 1;
   const eventResult = await fetchPaginated(
     (page) => `/users/${encodeURIComponent(username)}/events/public?per_page=100&page=${page}`,
@@ -331,6 +334,7 @@ export async function collectGitHubActivity(username, { days = 30, includePrivat
     collector: {
       authenticated,
       includePrivate,
+      workspaceId: includePrivate ? currentWorkspaceId() : null,
       githubRateLimit: latestRateLimit,
       candidateRepos: candidates.length,
       selectedRepos: repoSummaries.length,

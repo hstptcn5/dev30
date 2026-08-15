@@ -6,6 +6,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { collectGitHubActivity, getAuthenticatedGitHubUser, normalizeAnalysisDays } from './src/github.mjs';
 import { getPrivateAccessDiagnostics } from './src/github-access.mjs';
+import { legacyPatCredential, withGitHubCredential } from './src/github-auth-context.mjs';
+import { createOAuthFlow, exchangeOAuthCode, fetchGitHubViewer, githubAppConfigured, githubAppInstallUrl, tokenCredential } from './src/github-oauth.mjs';
+import { clearOAuthCookie, createSession, destroySession, getSession, makeOAuthCookie, readOAuthCookie, sessionStats } from './src/session.mjs';
 import { ANALYZER_VERSION, deterministicFallback, isValidGitHubUsername } from './src/analyzer.mjs';
 import { synthesizeDeltaWithDeepSeek, synthesizeWithDeepSeek } from './src/deepseek.mjs';
 import { synthesizeClientReportWithDeepSeek } from './src/client-report-deepseek.mjs';
@@ -13,15 +16,21 @@ import { buildClientReportInput, clientReportStats, clientReportToMarkdown, getC
 import { cacheStats, getCachedReport, reportCacheKey, setCachedReport } from './src/cache.mjs';
 import { buildSnapshot, compareSnapshots, getPreviousSnapshot, getSnapshotById, historyStats, listSnapshots, saveSnapshot } from './src/history.mjs';
 
-const PRODUCT_VERSION = '0.6.0';
+const PRODUCT_VERSION = '0.7.0';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT || 3000);
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
+let patAuthPromise = null;
 
-function sendJson(res, status, body) {
-  res.writeHead(status, jsonHeaders);
+function sendJson(res, status, body, headers = {}) {
+  res.writeHead(status, { ...jsonHeaders, ...headers });
   res.end(JSON.stringify(body));
+}
+
+function redirect(res, location, headers = {}) {
+  res.writeHead(302, { Location: location, 'Cache-Control': 'no-store', ...headers });
+  res.end();
 }
 
 async function readJson(req) {
@@ -101,6 +110,44 @@ function publicPayload(dataset, synthesis) {
   };
 }
 
+async function resolvePatAuth() {
+  const base = legacyPatCredential();
+  if (!base) return null;
+  if (!patAuthPromise) {
+    patAuthPromise = withGitHubCredential(base, async () => {
+      const viewer = await getAuthenticatedGitHubUser();
+      if (!viewer) return null;
+      const credential = { ...base, workspaceId: `github:${viewer.id}` };
+      return { viewer, credential, workspaceId: credential.workspaceId, mode: 'pat' };
+    }).catch((error) => {
+      patAuthPromise = null;
+      throw error;
+    });
+  }
+  return patAuthPromise;
+}
+
+async function resolveAuth(req, { refresh = true } = {}) {
+  const session = await getSession(req, { refresh }).catch((error) => {
+    if (error.status === 401) return null;
+    throw error;
+  });
+  if (session) {
+    return {
+      viewer: session.viewer,
+      credential: session.credential,
+      workspaceId: session.workspaceId,
+      mode: 'github-app',
+      sessionId: session.id,
+    };
+  }
+  return resolvePatAuth();
+}
+
+async function withAuth(auth, fn) {
+  return withGitHubCredential(auth?.credential || null, fn);
+}
+
 async function buildAnalysis({ username, locale, days, includePrivate }) {
   const dataset = await collectGitHubActivity(username, { days, includePrivate });
   const fallback = periodizeFallback(deterministicFallback(dataset, locale), dataset, locale);
@@ -124,11 +171,13 @@ async function buildHistoryContext(dataset, payload, locale) {
       username: dataset.profile.login,
       days: dataset.window.days,
       includePrivate: dataset.collector.includePrivate,
+      workspaceId: dataset.collector.workspaceId || null,
       locale,
       limit: 10,
     });
     return {
       snapshotId: current.id,
+      workspaceId: current.workspaceId,
       saved: saved.created,
       count: saved.total,
       previousSnapshotId: saved.previous?.id || null,
@@ -142,6 +191,7 @@ async function buildHistoryContext(dataset, payload, locale) {
     console.error('Snapshot history failed:', error);
     return {
       snapshotId: null,
+      workspaceId: null,
       saved: false,
       count: 0,
       previousSnapshotId: null,
@@ -155,6 +205,18 @@ async function buildHistoryContext(dataset, payload, locale) {
   }
 }
 
+function assertPrivateAccess(auth, subject) {
+  if (!auth?.viewer) throw Object.assign(new Error('Connect GitHub to access this private workspace.'), { status: 401 });
+  const username = typeof subject === 'string' ? subject : subject?.username;
+  if (auth.viewer.login.toLowerCase() !== String(username || '').toLowerCase()) {
+    throw Object.assign(new Error('Private data is only available for the connected GitHub account.'), { status: 403 });
+  }
+  const workspaceId = typeof subject === 'object' ? subject?.workspaceId : null;
+  if (workspaceId && !workspaceId.startsWith('legacy:') && workspaceId !== auth.workspaceId) {
+    throw Object.assign(new Error('This private item belongs to another workspace.'), { status: 403 });
+  }
+}
+
 async function handleAnalyze(req, res) {
   try {
     const body = await readJson(req);
@@ -165,11 +227,15 @@ async function handleAnalyze(req, res) {
     const refresh = body.refresh === true;
     if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
 
+    const auth = await resolveAuth(req);
+    if (includePrivate) assertPrivateAccess(auth, username);
+    const workspaceId = includePrivate ? auth?.workspaceId || null : null;
     const key = reportCacheKey({
       username,
       days,
       locale,
       includePrivate,
+      workspaceId,
       analyzerVersion: ANALYZER_VERSION,
       model: process.env.DEEPSEEK_API_KEY ? (process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash') : 'deterministic',
     });
@@ -181,13 +247,15 @@ async function handleAnalyze(req, res) {
           ...cached.value,
           meta: {
             ...cached.value.meta,
+            authMode: auth?.mode || 'anonymous',
+            workspaceId,
             cache: { hit: true, generatedAt: cached.generatedAt, expiresAt: cached.expiresAt },
           },
         });
       }
     }
 
-    const { dataset, payload } = await buildAnalysis({ username, locale, days, includePrivate });
+    const { dataset, payload } = await withAuth(auth, () => buildAnalysis({ username, locale, days, includePrivate }));
     const history = await buildHistoryContext(dataset, payload, locale);
     const cacheablePayload = { ...payload, history };
     const cacheMeta = setCachedReport(key, cacheablePayload);
@@ -195,6 +263,8 @@ async function handleAnalyze(req, res) {
       ...cacheablePayload,
       meta: {
         ...payload.meta,
+        authMode: auth?.mode || 'anonymous',
+        workspaceId,
         cache: { hit: false, ...cacheMeta },
       },
     });
@@ -204,7 +274,7 @@ async function handleAnalyze(req, res) {
     if (error.status === 404) return sendJson(res, 404, { error: 'GitHub user not found.' });
     if (error.status === 403 || error.status === 429) {
       return sendJson(res, error.status === 403 ? 403 : 429, {
-        error: error.status === 403 ? error.message : 'GitHub rate limit reached. Configure GITHUB_TOKEN for production usage.',
+        error: error.status === 403 ? error.message : 'GitHub rate limit reached. Connect GitHub or configure a development PAT.',
         reset: error.rateLimitReset || null,
       });
     }
@@ -213,23 +283,16 @@ async function handleAnalyze(req, res) {
   }
 }
 
-async function assertPrivateOwner(username) {
-  const viewer = await getAuthenticatedGitHubUser();
-  if (!viewer || viewer.login.toLowerCase() !== String(username || '').toLowerCase()) {
-    throw Object.assign(new Error('Private data is only available for the connected GitHub account.'), { status: 403 });
-  }
-  return viewer;
-}
-
-async function handleHistory(url, res) {
+async function handleHistory(req, url, res) {
   const username = String(url.searchParams.get('username') || '').trim();
   const locale = url.searchParams.get('locale') === 'vi' ? 'vi' : 'en';
   const days = normalizeAnalysisDays(url.searchParams.get('days'));
   const includePrivate = url.searchParams.get('includePrivate') === 'true';
   if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
-  if (includePrivate) await assertPrivateOwner(username);
-  const entries = await listSnapshots({ username, days, includePrivate, locale, limit: 24 });
-  return sendJson(res, 200, { username, days, includePrivate, locale, entries });
+  const auth = includePrivate ? await resolveAuth(req) : null;
+  if (includePrivate) assertPrivateAccess(auth, username);
+  const entries = await listSnapshots({ username, days, includePrivate, locale, workspaceId: includePrivate ? auth.workspaceId : null, limit: 24 });
+  return sendJson(res, 200, { username, days, includePrivate, locale, workspaceId: includePrivate ? auth.workspaceId : 'public', entries });
 }
 
 async function handleCreateClientReport(req, res) {
@@ -238,7 +301,10 @@ async function handleCreateClientReport(req, res) {
   const audience = body.audience === 'founder' ? 'founder' : 'client';
   const snapshot = await getSnapshotById(snapshotId);
   if (!snapshot) return sendJson(res, 404, { error: 'Snapshot not found. Analyze the account first to create one.' });
-  if (snapshot.includePrivate) await assertPrivateOwner(snapshot.username);
+  if (snapshot.includePrivate) {
+    const auth = await resolveAuth(req);
+    assertPrivateAccess(auth, snapshot);
+  }
   if (!snapshot.evidence?.length) {
     return sendJson(res, 409, { error: 'This snapshot predates report-ready evidence storage. Refresh the analysis once, then generate the update again.' });
   }
@@ -266,10 +332,13 @@ async function handleCreateClientReport(req, res) {
   });
 }
 
-async function handleGetClientReport(id, res) {
+async function handleGetClientReport(req, id, res) {
   const saved = await getClientReport(id);
   if (!saved) return sendJson(res, 404, { error: 'Client report not found.' });
-  if (saved.includePrivate || !saved.shareable) await assertPrivateOwner(saved.username);
+  if (saved.includePrivate || !saved.shareable) {
+    const auth = await resolveAuth(req);
+    assertPrivateAccess(auth, saved.username);
+  }
   return sendJson(res, 200, {
     id: saved.id,
     createdAt: saved.createdAt,
@@ -287,56 +356,141 @@ async function handleGetClientReport(id, res) {
   });
 }
 
-async function handleListClientReports(url, res) {
+async function handleListClientReports(req, url, res) {
   const username = String(url.searchParams.get('username') || '').trim();
   const includePrivate = url.searchParams.get('includePrivate') === 'true';
   if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
-  if (includePrivate) await assertPrivateOwner(username);
+  if (includePrivate) {
+    const auth = await resolveAuth(req);
+    assertPrivateAccess(auth, username);
+  }
   const reports = await listClientReports({ username, includePrivate, limit: 30 });
   return sendJson(res, 200, { username, includePrivate, reports });
+}
+
+async function handleAuthStatus(req, res) {
+  let auth = null;
+  try { auth = await resolveAuth(req); } catch {}
+  return sendJson(res, 200, {
+    githubAppConfigured: githubAppConfigured(),
+    installUrl: githubAppInstallUrl(),
+    connected: Boolean(auth),
+    authMode: auth?.mode || null,
+    viewer: auth?.viewer || null,
+    workspaceId: auth?.workspaceId || null,
+    tokenExpiresAt: auth?.credential?.expiresAt ? new Date(auth.credential.expiresAt).toISOString() : null,
+  });
+}
+
+async function handleWorkspace(req, url, res) {
+  const auth = await resolveAuth(req);
+  if (!auth) return sendJson(res, 401, { error: 'Connect GitHub to open a workspace.' });
+  const days = normalizeAnalysisDays(url.searchParams.get('days'));
+  const locale = url.searchParams.get('locale') === 'vi' ? 'vi' : 'en';
+  const [access, snapshots, reports] = await withAuth(auth, async () => Promise.all([
+    getPrivateAccessDiagnostics(),
+    listSnapshots({ username: auth.viewer.login, days, includePrivate: true, workspaceId: auth.workspaceId, locale, limit: 12 }),
+    listClientReports({ username: auth.viewer.login, includePrivate: true, limit: 12 }),
+  ]));
+  return sendJson(res, 200, {
+    workspaceId: auth.workspaceId,
+    authMode: auth.mode,
+    viewer: auth.viewer,
+    access,
+    days,
+    locale,
+    snapshots,
+    reports,
+  });
+}
+
+async function handleOAuthStart(req, url, res) {
+  try {
+    const flow = createOAuthFlow({ returnTo: url.searchParams.get('returnTo') || '/workspace' });
+    return redirect(res, flow.url, { 'Set-Cookie': makeOAuthCookie(req, flow) });
+  } catch (error) {
+    return sendJson(res, error.status || 500, { error: error.message });
+  }
+}
+
+async function handleOAuthCallback(req, url, res) {
+  const flow = readOAuthCookie(req);
+  const state = url.searchParams.get('state');
+  const code = url.searchParams.get('code');
+  if (!flow || !state || state !== flow.state || !code) {
+    return redirect(res, '/?auth_error=oauth_state', { 'Set-Cookie': clearOAuthCookie(req) });
+  }
+  try {
+    const tokenPayload = await exchangeOAuthCode({ code, verifier: flow.verifier, callbackUrl: flow.callbackUrl });
+    const viewer = await fetchGitHubViewer(tokenPayload.access_token);
+    const credential = tokenCredential(tokenPayload, viewer);
+    const session = await createSession(req, { viewer, credential });
+    return redirect(res, flow.returnTo || '/workspace', { 'Set-Cookie': [session.setCookie, clearOAuthCookie(req)] });
+  } catch (error) {
+    console.error('GitHub OAuth callback failed:', error);
+    return redirect(res, '/?auth_error=oauth_failed', { 'Set-Cookie': clearOAuthCookie(req) });
+  }
 }
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
+  if (req.method === 'GET' && url.pathname === '/auth/github') return handleOAuthStart(req, url, res);
+  if (req.method === 'GET' && url.pathname === '/auth/github/callback') return handleOAuthCallback(req, url, res);
+  if (req.method === 'POST' && url.pathname === '/api/auth/logout') {
+    const clearCookie = await destroySession(req).catch(() => null);
+    return sendJson(res, 200, { ok: true }, clearCookie ? { 'Set-Cookie': clearCookie } : {});
+  }
+  if (req.method === 'GET' && url.pathname === '/api/auth/status') return handleAuthStatus(req, res);
+
   if (req.method === 'GET' && url.pathname === '/api/health') {
+    let auth = null;
+    try { auth = await resolveAuth(req, { refresh: false }); } catch {}
     return sendJson(res, 200, {
       ok: true,
       productVersion: PRODUCT_VERSION,
       analyzerVersion: ANALYZER_VERSION,
       deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
-      githubAuthenticated: Boolean(process.env.GITHUB_TOKEN),
+      githubAuthenticated: Boolean(auth),
+      githubAppConfigured: githubAppConfigured(),
+      authMode: auth?.mode || null,
+      workspaceId: auth?.workspaceId || null,
       cache: cacheStats(),
-      history: await historyStats().catch(() => ({ snapshots: 0, privateSnapshots: 0, filePath: null })),
+      history: await historyStats().catch(() => ({ snapshots: 0, privateSnapshots: 0, workspaces: 0, filePath: null })),
       clientReports: await clientReportStats().catch(() => ({ reports: 0, privateReports: 0, shareableReports: 0, filePath: null })),
+      sessions: await sessionStats().catch(() => ({ sessions: 0, persistentSecretConfigured: false, filePath: null })),
     });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/me') {
     try {
-      const viewer = await getAuthenticatedGitHubUser();
-      const access = viewer ? await getPrivateAccessDiagnostics() : null;
-      return sendJson(res, 200, { connected: Boolean(viewer), viewer, access });
+      const auth = await resolveAuth(req);
+      if (!auth) return sendJson(res, 200, { connected: false, viewer: null, access: null, authMode: null, workspaceId: null, githubAppConfigured: githubAppConfigured(), installUrl: githubAppInstallUrl() });
+      const access = await withAuth(auth, () => getPrivateAccessDiagnostics());
+      return sendJson(res, 200, { connected: true, viewer: auth.viewer, access, authMode: auth.mode, workspaceId: auth.workspaceId, githubAppConfigured: githubAppConfigured(), installUrl: githubAppInstallUrl() });
     } catch (error) {
       return sendJson(res, 502, { connected: false, viewer: null, access: null, error: error.message });
     }
   }
 
   try {
-    if (req.method === 'GET' && url.pathname === '/api/history') return await handleHistory(url, res);
+    if (req.method === 'GET' && url.pathname === '/api/workspace') return await handleWorkspace(req, url, res);
+    if (req.method === 'GET' && url.pathname === '/api/history') return await handleHistory(req, url, res);
     if (req.method === 'POST' && url.pathname === '/api/client-report') return await handleCreateClientReport(req, res);
-    if (req.method === 'GET' && url.pathname === '/api/client-reports') return await handleListClientReports(url, res);
+    if (req.method === 'GET' && url.pathname === '/api/client-reports') return await handleListClientReports(req, url, res);
     const reportMatch = url.pathname.match(/^\/api\/client-report\/([0-9a-f-]+)$/i);
-    if (req.method === 'GET' && reportMatch) return await handleGetClientReport(reportMatch[1], res);
+    if (req.method === 'GET' && reportMatch) return await handleGetClientReport(req, reportMatch[1], res);
   } catch (error) {
     return sendJson(res, error.status || 500, { error: error.message || 'Request failed.' });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/analyze') return handleAnalyze(req, res);
 
-  if ((req.method === 'GET' || req.method === 'HEAD') && (/^\/u\/[A-Za-z0-9-]+\/?$/.test(url.pathname) || /^\/r\/[0-9a-f-]+\/?$/i.test(url.pathname))) {
-    return serveAppShell(res);
-  }
+  if ((req.method === 'GET' || req.method === 'HEAD') && (
+    /^\/u\/[A-Za-z0-9-]+\/?$/.test(url.pathname)
+    || /^\/r\/[0-9a-f-]+\/?$/i.test(url.pathname)
+    || url.pathname === '/workspace'
+  )) return serveAppShell(res);
 
   if (req.method === 'GET' || req.method === 'HEAD') {
     if (await serveStatic(res, url.pathname)) return;
