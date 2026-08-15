@@ -7,10 +7,11 @@ import { fileURLToPath } from 'node:url';
 import { collectGitHubActivity, getAuthenticatedGitHubUser, normalizeAnalysisDays } from './src/github.mjs';
 import { getPrivateAccessDiagnostics } from './src/github-access.mjs';
 import { ANALYZER_VERSION, deterministicFallback, isValidGitHubUsername } from './src/analyzer.mjs';
-import { synthesizeWithDeepSeek } from './src/deepseek.mjs';
+import { synthesizeDeltaWithDeepSeek, synthesizeWithDeepSeek } from './src/deepseek.mjs';
 import { cacheStats, getCachedReport, reportCacheKey, setCachedReport } from './src/cache.mjs';
+import { buildSnapshot, compareSnapshots, historyStats, listSnapshots, saveSnapshot } from './src/history.mjs';
 
-const PRODUCT_VERSION = '0.4.1';
+const PRODUCT_VERSION = '0.5.0';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT || 3000);
@@ -107,7 +108,49 @@ async function buildAnalysis({ username, locale, days, includePrivate }) {
   } catch (error) {
     synthesis = { report: fallback, mode: 'deterministic', model: null, notice: `DeepSeek synthesis failed: ${error.message}` };
   }
-  return publicPayload(dataset, synthesis);
+  return { dataset, payload: publicPayload(dataset, synthesis) };
+}
+
+async function buildHistoryContext(dataset, payload, locale) {
+  try {
+    const proposed = buildSnapshot({ dataset, payload, locale });
+    const saved = await saveSnapshot(proposed);
+    const current = saved.snapshot;
+    const delta = compareSnapshots(saved.previous, current);
+    const narrative = delta ? await synthesizeDeltaWithDeepSeek(delta, { locale, days: dataset.window.days }) : null;
+    const entries = await listSnapshots({
+      username: dataset.profile.login,
+      days: dataset.window.days,
+      includePrivate: dataset.collector.includePrivate,
+      locale,
+      limit: 10,
+    });
+    return {
+      snapshotId: current.id,
+      saved: saved.created,
+      count: saved.total,
+      previousSnapshotId: saved.previous?.id || null,
+      generatedAt: current.generatedAt,
+      entries,
+      delta,
+      narrative,
+      persistence: 'local-json',
+    };
+  } catch (error) {
+    console.error('Snapshot history failed:', error);
+    return {
+      snapshotId: null,
+      saved: false,
+      count: 0,
+      previousSnapshotId: null,
+      generatedAt: null,
+      entries: [],
+      delta: null,
+      narrative: null,
+      persistence: 'unavailable',
+      error: error.message,
+    };
+  }
 }
 
 async function handleAnalyze(req, res) {
@@ -142,10 +185,12 @@ async function handleAnalyze(req, res) {
       }
     }
 
-    const payload = await buildAnalysis({ username, locale, days, includePrivate });
-    const cacheMeta = setCachedReport(key, payload);
+    const { dataset, payload } = await buildAnalysis({ username, locale, days, includePrivate });
+    const history = await buildHistoryContext(dataset, payload, locale);
+    const cacheablePayload = { ...payload, history };
+    const cacheMeta = setCachedReport(key, cacheablePayload);
     return sendJson(res, 200, {
-      ...payload,
+      ...cacheablePayload,
       meta: {
         ...payload.meta,
         cache: { hit: false, ...cacheMeta },
@@ -166,6 +211,24 @@ async function handleAnalyze(req, res) {
   }
 }
 
+async function handleHistory(url, res) {
+  const username = String(url.searchParams.get('username') || '').trim();
+  const locale = url.searchParams.get('locale') === 'vi' ? 'vi' : 'en';
+  const days = normalizeAnalysisDays(url.searchParams.get('days'));
+  const includePrivate = url.searchParams.get('includePrivate') === 'true';
+  if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
+
+  if (includePrivate) {
+    const viewer = await getAuthenticatedGitHubUser();
+    if (!viewer || viewer.login.toLowerCase() !== username.toLowerCase()) {
+      return sendJson(res, 403, { error: 'Private history is only available for the connected GitHub account.' });
+    }
+  }
+
+  const entries = await listSnapshots({ username, days, includePrivate, locale, limit: 24 });
+  return sendJson(res, 200, { username, days, includePrivate, locale, entries });
+}
+
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
 
@@ -177,6 +240,7 @@ const server = http.createServer(async (req, res) => {
       deepseekConfigured: Boolean(process.env.DEEPSEEK_API_KEY),
       githubAuthenticated: Boolean(process.env.GITHUB_TOKEN),
       cache: cacheStats(),
+      history: await historyStats().catch(() => ({ snapshots: 0, privateSnapshots: 0, filePath: null })),
     });
   }
 
@@ -187,6 +251,14 @@ const server = http.createServer(async (req, res) => {
       return sendJson(res, 200, { connected: Boolean(viewer), viewer, access });
     } catch (error) {
       return sendJson(res, 502, { connected: false, viewer: null, access: null, error: error.message });
+    }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/history') {
+    try {
+      return await handleHistory(url, res);
+    } catch (error) {
+      return sendJson(res, error.status || 500, { error: error.message || 'History lookup failed.' });
     }
   }
 
