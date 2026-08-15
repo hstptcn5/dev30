@@ -1,22 +1,24 @@
+import { currentGitHubToken } from './github-auth-context.mjs';
+
 const API_ROOT = 'https://api.github.com';
 const API_VERSION = '2026-03-10';
 
 function authHeaders() {
+  const token = currentGitHubToken();
   return {
     Accept: 'application/vnd.github+json',
-    Authorization: `Bearer ${process.env.GITHUB_TOKEN}`,
+    ...(token ? { Authorization: `Bearer ${token}` } : {}),
     'X-GitHub-Api-Version': API_VERSION,
-    'User-Agent': 'dev30/0.4-private-access-diagnostics',
+    'User-Agent': 'dev30/0.7-private-access-diagnostics',
   };
 }
 
 async function probe(path) {
-  const response = await fetch(`${API_ROOT}${path}`, { headers: authHeaders() });
-  return response;
+  return fetch(`${API_ROOT}${path}`, { headers: authHeaders() });
 }
 
 export async function getPrivateAccessDiagnostics() {
-  if (!process.env.GITHUB_TOKEN) {
+  if (!currentGitHubToken()) {
     return {
       privateReposAccessible: 0,
       contentsRead: false,
