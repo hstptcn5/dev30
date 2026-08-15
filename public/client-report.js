@@ -55,7 +55,8 @@ async function generateClientReport(audience,button){
 function attachGenerator(){
   if(location.pathname.startsWith('/r/'))return;
   const historyHead=$('.history-head');if(!historyHead||historyHead.querySelector('.client-report-generator'))return;
-  const controls=E('div','client-report-generator'),select=E('select','client-report-select'),client=E('option','',T('Client update','Cập nhật client')),founder=E('option','',T('Founder update','Cập nhật founder')),button=E('button','action-button',T('Generate weekly update','Tạo cập nhật tuần'));
+  const sevenDays=$('#days')?.value==='7';
+  const controls=E('div','client-report-generator'),select=E('select','client-report-select'),client=E('option','',T('Client update','Cập nhật client')),founder=E('option','',T('Founder update','Cập nhật founder')),button=E('button','action-button',sevenDays?T('Generate weekly update','Tạo cập nhật tuần'):T('Generate stakeholder update','Tạo cập nhật stakeholder'));
   client.value='client';founder.value='founder';select.append(client,founder);button.type='button';button.onclick=()=>generateClientReport(select.value,button);controls.append(select,button);historyHead.append(controls);
 }
 
