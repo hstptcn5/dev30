@@ -1,3 +1,5 @@
+export const ANALYZER_VERSION = '0.3.1';
+
 const CATEGORY_ORDER = ['build', 'harden', 'test', 'release', 'maintain', 'docs'];
 
 const TITLE_RULES = [
@@ -10,7 +12,14 @@ const TITLE_RULES = [
 
 const FILE_RULES = {
   docs: [/(^|\/)(docs?|readme|changelog|license)(\/|\.|$)/i, /\.(md|mdx|rst)$/i],
-  test: [/(^|\/)(__tests__|tests?|spec|e2e|playwright|cypress)(\/|\.|$)/i, /\.(test|spec)\.[cm]?[jt]sx?$/i],
+  test: [
+    /(^|\/)(__tests__|tests?|spec|e2e|playwright|cypress)(\/|\.|$)/i,
+    /\.(test|spec)\.[cm]?[jt]sx?$/i,
+    /(^|\/)[^/]+_test\.go$/i,
+    /(^|\/)(test_[^/]+|[^/]+_test)\.py$/i,
+    /(^|\/)[^/]+Tests?\.(cs|java|kt)$/i,
+    /(^|\/)src\/test\//i,
+  ],
   release: [/(^|\/)\.github\/workflows\//i, /(^|\/)(release|scripts?\/release|packag(e|ing)|deploy|deployment)(\/|\.|$)/i],
   harden: [/(security|auth|recovery|rollback|retry|rate.?limit|validation|sanitize|migration|locking|concurr|reliab|timeout|health)/i],
   maintain: [/(deps?|dependency|cleanup|format|lint|refactor|rename|housekeep)/i],
