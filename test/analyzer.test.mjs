@@ -7,6 +7,7 @@ import {
   isValidGitHubUsername,
   normalizeReport,
   summarizeWorkMix,
+  workCategoryWeights,
 } from '../src/analyzer.mjs';
 
 test('validates GitHub usernames conservatively', () => {
@@ -45,6 +46,22 @@ test('work mix uses stable percentages that sum to 100', () => {
   assert.equal(mix.docs, 20);
 });
 
+test('mixed feature units contribute to test and release work instead of one exclusive bucket', () => {
+  const weights = workCategoryWeights({
+    title: 'feat: ship scheduler',
+    files: [
+      'internal/scheduler/run.go',
+      'internal/scheduler/state.go',
+      'tests/e2e/scheduler.spec.ts',
+      '.github/workflows/ci.yml',
+    ],
+  });
+  assert.ok(weights.build > 0);
+  assert.ok(weights.test > 0);
+  assert.ok(weights.release > 0);
+  assert.equal(Math.round(Object.values(weights).reduce((a, b) => a + b, 0) * 1000), 1000);
+});
+
 test('deduplicates pull requests and their merge commits into one work unit', () => {
   const evidence = [
     { id: 'E1', type: 'pull_request', repo: 'Goflow', repoFullName: 'hstptcn5/Goflow', ref: '23', date: '2026-08-15', title: 'docs: define Goflow product direction', files: ['README.md'] },
@@ -56,6 +73,7 @@ test('deduplicates pull requests and their merge commits into one work unit', ()
   const prUnit = units.find((unit) => unit.type === 'pull_request');
   assert.deepEqual(prUnit.evidenceIds, ['E1', 'E2']);
   assert.equal(prUnit.category, 'docs');
+  assert.equal(prUnit.categoryMix.docs, 1);
 });
 
 test('assigns claim confidence from evidence strength', () => {
