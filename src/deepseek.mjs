@@ -1,4 +1,5 @@
 import { normalizeReport } from './analyzer.mjs';
+import { deterministicDeltaNarrative } from './history.mjs';
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
 
@@ -113,6 +114,64 @@ export async function synthesizeWithDeepSeek(dataset, fallback, { locale = 'en' 
       model: payload.model || model,
       notice: null,
     };
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function normalizeDeltaNarrative(value, fallback) {
+  if (!value || typeof value !== 'object') return fallback;
+  const allowedTypes = new Set(['new_repo', 'focus_shift', 'activity_change', 'work_mix', 'new_work']);
+  const highlights = Array.isArray(value.highlights)
+    ? value.highlights.slice(0, 8).map((item) => ({
+      type: allowedTypes.has(item?.type) ? item.type : 'activity_change',
+      repo: String(item?.repo || '').trim(),
+      text: String(item?.text || '').trim(),
+    })).filter((item) => item.text)
+    : fallback.highlights;
+  return {
+    headline: String(value.headline || fallback.headline),
+    summary: String(value.summary || fallback.summary),
+    highlights,
+    mode: 'deepseek',
+  };
+}
+
+export async function synthesizeDeltaWithDeepSeek(delta, { locale = 'en', days = 30 } = {}) {
+  const fallback = deterministicDeltaNarrative(delta, locale);
+  if (!delta || !fallback) return null;
+  const apiKey = process.env.DEEPSEEK_API_KEY;
+  if (!apiKey) return fallback;
+
+  const language = locale === 'vi' ? 'Vietnamese' : 'English';
+  const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 45_000);
+  const prompt = `You are Dev30 Snapshot Compare. Explain only the deterministic differences between two saved ${days}-day GitHub activity snapshots. Output JSON only in ${language}.\n\nRules:\n- The supplied delta is the source of truth. Do not invent work or causes.\n- Count changes are changes in the moving analysis window, not proof that commits were added or removed between snapshot timestamps. Phrase them as observed activity increasing/decreasing in the window.\n- Do not infer skill, productivity, personality, motivation, seniority, quality, or hiring suitability.\n- Prefer new repositories, new work units, focus changes, and meaningful work-mix shifts.\n- At most 6 highlights.\n\nReturn exactly: {"headline":"...","summary":"...","highlights":[{"type":"new_repo|focus_shift|activity_change|work_mix|new_work","repo":"optional repo","text":"..."}]}`;
+
+  try {
+    const response = await fetch(API_URL, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${apiKey}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        model,
+        messages: [
+          { role: 'system', content: prompt },
+          { role: 'user', content: JSON.stringify(delta) },
+        ],
+        response_format: { type: 'json_object' },
+        max_tokens: 1200,
+        stream: false,
+      }),
+      signal: controller.signal,
+    });
+    if (!response.ok) return fallback;
+    const payload = await response.json();
+    const content = payload?.choices?.[0]?.message?.content;
+    if (!content) return fallback;
+    return normalizeDeltaNarrative(JSON.parse(content), fallback);
+  } catch {
+    return fallback;
   } finally {
     clearTimeout(timeout);
   }
