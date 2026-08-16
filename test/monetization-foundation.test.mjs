@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { normalizeAiUsage } from '../src/ai-telemetry.mjs';
-import { assertProEntitlement, PLAN_LIMITS } from '../src/entitlements.mjs';
+import { entitlementSnapshot, PLAN_LIMITS } from '../src/entitlements.mjs';
 import { buildSnapshot, saveSnapshot } from '../src/history.mjs';
 import { getSavedPublicReport } from '../src/public-report.mjs';
 import {
@@ -42,7 +42,7 @@ test('RevenueCat uses the stable GitHub workspace as App User ID', () => {
   assert.equal(config.entitlementId, 'pro');
 });
 
-test('RevenueCat entitlement lookup grants Pro only for an active entitlement and fails closed', async () => {
+test('RevenueCat entitlement lookup grants Pro only for an active entitlement and shared boundary surfaces provider outages', async () => {
   const beforeFetch = globalThis.fetch;
   try {
     invalidateRevenueCatCustomer('github:1');
@@ -60,7 +60,11 @@ test('RevenueCat entitlement lookup grants Pro only for an active entitlement an
     const failed = await revenueCatPlan('github:3', RC_ENV, { fresh: true });
     assert.equal(failed.plan, 'free');
     assert.equal(failed.source, 'revenuecat_error');
-    assert.throws(() => assertProEntitlement({ plan: failed.plan, billing: { source: failed.source } }, 'Private analysis'), (error) => error.code === 'entitlement_unavailable' && error.status === 503);
+    invalidateRevenueCatCustomer('github:3');
+    await assert.rejects(
+      () => entitlementSnapshot('github:3', { env: { ...RC_ENV, NODE_ENV: 'production' } }),
+      (error) => error.code === 'entitlement_unavailable' && error.status === 503,
+    );
   } finally {
     globalThis.fetch = beforeFetch;
   }
