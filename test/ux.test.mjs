@@ -10,7 +10,7 @@ test('home presents one primary analysis flow instead of competing account CTAs'
   assert.match(html, /See their work/);
   assert.match(html, /id="private-toggle"/);
   assert.doesNotMatch(html, /Analyze my account/);
-  assert.match(html, /A briefing, not another activity dashboard/);
+  assert.match(html, /A briefing[^<]*30 seconds/);
 });
 
 test('connected account UI keeps implementation jargon out of the home experience', async () => {
