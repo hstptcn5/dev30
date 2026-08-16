@@ -8,12 +8,15 @@ This is the first hosted deployment target for Dev30 1.1.
 Netlify CDN
   ├─ /, CSS, JS, images -> public/
   ├─ /u/*, /r/*, /workspace -> public/index.html
-  └─ /api/*, /auth/* -> Netlify Function -> existing Dev30 Node request listener
-                                      ↓
-                                  Supabase
+  ├─ /api/*, /auth/* -> synchronous Netlify Function -> existing Dev30 Node request listener
+  └─ fresh Analyze -> Netlify Background Function -> GitHub + DeepSeek
+                                            ↓
+                                  Supabase job + report persistence
 ```
 
-The Netlify adapter does not fork Dev30 business logic. Local `npm start`, Docker, and Netlify all use the request listener already defined in `server.mjs`.
+The main Netlify adapter does not fork Dev30 business logic. Local `npm start`, Docker, the synchronous function and the background Analyze worker all reuse the request listener already defined in `server.mjs`.
+
+Fresh Analyze is deliberately asynchronous in hosted production. Netlify synchronous Functions have a fixed execution limit, while GitHub collection plus AI synthesis can legitimately take longer on larger accounts. The browser starts a background job and polls a workspace-bound status endpoint until the report is persisted and ready.
 
 ## 1. Supabase
 
@@ -22,6 +25,14 @@ Create a dedicated `dev30` project in `ap-southeast-1` (Singapore), then apply:
 ```text
 docs/SUPABASE_SCHEMA.sql
 ```
+
+Existing hosted projects must also apply:
+
+```text
+docs/SUPABASE_ANALYSIS_JOBS.sql
+```
+
+The analysis-job table is server-only and is used to persist background job state/results across function invocations. It has RLS enabled and grants no browser `anon` or `authenticated` access.
 
 After applying the schema, run Supabase security and performance advisors and resolve blocking security findings before production traffic.
 
@@ -50,12 +61,15 @@ Node: 22
 
 No framework preset is required.
 
-The function handles only:
+Routing is split by responsibility:
 
 ```text
-/api/*
-/auth/*
+/api/* and /auth/*       synchronous Dev30 request listener
+/api/analyze-background  background Analyze worker
+/api/analysis-job/:id    authenticated job polling
 ```
+
+The wildcard synchronous function explicitly excludes the two background-analysis paths so Netlify routing cannot accidentally send them through the 60-second request path.
 
 Static assets stay on Netlify CDN. Reader/workspace routes are rewritten to `public/index.html`.
 
@@ -74,17 +88,7 @@ TRUST_PROXY=true
 COOKIE_SECURE=true
 ```
 
-For the first deployment, keep these unset unless already being activated deliberately:
-
-```text
-GITHUB_APP_CLIENT_ID
-GITHUB_APP_CLIENT_SECRET
-REVENUECAT_API_KEY
-REVENUECAT_PURCHASE_LINK_URL
-RESEND_API_KEY
-```
-
-The first goal is a healthy public runtime and shared persistence, not billing or email.
+GitHub App and DeepSeek values are required before fresh hosted Analyze can complete. RevenueCat, cron and email can be activated separately.
 
 ## 4. First deploy checks
 
@@ -100,6 +104,8 @@ GET /u/hstptcn5       -> app shell / saved-report flow
 
 `/api/ready` must report Supabase as ready before the deployment is treated as healthy.
 
+After GitHub App auth is active, run one fresh Analyze from the UI and confirm that it remains in a loading state while the background job executes, then renders the completed report without an HTML/function-timeout error.
+
 ## 5. Function region
 
 Supabase is placed in Singapore. Netlify's default Functions region may be elsewhere depending on plan/project settings. If the Netlify plan supports configurable Functions regions, select Singapore (`sin`) after the baseline deploy and compare latency before/after.
@@ -112,10 +118,9 @@ Do not expose production secrets to untrusted deploy previews. Prefer production
 
 ## 7. Next activation order
 
-Only after Netlify + Supabase are healthy:
+Only after Netlify + Supabase + GitHub identity + fresh Analyze are healthy:
 
-1. configure the production GitHub App callback using the real Netlify/domain origin;
-2. activate RevenueCat + Paddle;
-3. activate cron / weekly reports;
-4. activate Resend email;
-5. add a custom domain when desired.
+1. activate RevenueCat + Paddle;
+2. activate cron / weekly reports;
+3. activate Resend email;
+4. add a custom domain when desired.

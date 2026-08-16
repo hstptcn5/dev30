@@ -33,4 +33,5 @@ export default async function handler(request) {
 
 export const config = {
   path: ['/api/*', '/auth/*'],
+  excludedPath: ['/api/analyze-background', '/api/analysis-job/*'],
 };
