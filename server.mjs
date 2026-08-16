@@ -19,11 +19,11 @@ import { buildSnapshot, compareSnapshots } from './src/history.mjs';
 import { getPreviousSnapshotPersistent, getSnapshotByIdPersistent, historyStatsPersistent, listSnapshotsPersistent, saveSnapshotPersistent } from './src/history-store.mjs';
 import { assertRuntimeConfig, runtimeConfig, validateRuntimeConfig } from './src/runtime.mjs';
 import { storageBackend, storageConfig, storageReadiness } from './src/storage.mjs';
-import { consumeEntitlement, quotaError } from './src/entitlements.mjs';
+import { consumeEntitlement, entitlementSnapshot, proRequiredError, quotaError } from './src/entitlements.mjs';
 import { persistWorkspaceAuth } from './src/workspace-connection.mjs';
 import { createSaasRoutes } from './src/saas-routes.mjs';
 
-const PRODUCT_VERSION = '1.0.0';
+const PRODUCT_VERSION = '1.1.0';
 const runtimeValidation = assertRuntimeConfig();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
@@ -115,6 +115,7 @@ function publicPayload(dataset, synthesis) {
       analysisMode: synthesis.mode,
       model: synthesis.model,
       notice: synthesis.notice,
+      aiUsage: synthesis.usage || null,
       collector: dataset.collector,
     },
   };
@@ -165,7 +166,7 @@ async function buildAnalysis({ username, locale, days, includePrivate }) {
   try {
     synthesis = await synthesizeWithDeepSeek(dataset, fallback, { locale });
   } catch (error) {
-    synthesis = { report: fallback, mode: 'deterministic', model: null, notice: `DeepSeek synthesis failed: ${error.message}` };
+    synthesis = { report: fallback, mode: 'deterministic', model: null, notice: `DeepSeek synthesis failed: ${error.message}`, usage: null };
   }
   return { dataset, payload: publicPayload(dataset, synthesis) };
 }
@@ -238,7 +239,11 @@ async function handleAnalyze(req, res) {
     if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
 
     const auth = await resolveAuth(req);
-    if (includePrivate) assertPrivateAccess(auth, username);
+    if (includePrivate) {
+      assertPrivateAccess(auth, username);
+      const entitlement = await entitlementSnapshot(auth.workspaceId);
+      if (entitlement.plan !== 'pro') throw proRequiredError('Private repository analysis');
+    }
     const workspaceId = includePrivate ? auth?.workspaceId || null : null;
     const key = reportCacheKey({
       username,
@@ -285,9 +290,10 @@ async function handleAnalyze(req, res) {
     });
   } catch (error) {
     if (error instanceof SyntaxError) return sendJson(res, 400, { error: 'Invalid JSON request.' });
-    if (error.status === 401) return sendJson(res, 401, { error: error.message });
+    if (error.status === 401) return sendJson(res, 401, { error: error.message, code: error.code || null });
     if (error.status === 404) return sendJson(res, 404, { error: 'GitHub user not found.' });
     if (error.code === 'quota_exceeded') return sendJson(res, 429, { error: error.message, code: error.code, metric: error.metric, plan: error.plan, used: error.used, limit: error.limit });
+    if (error.code === 'pro_required') return sendJson(res, 402, { error: error.message, code: error.code });
     if (error.status === 403 || error.status === 429) {
       return sendJson(res, error.status === 403 ? 403 : 429, {
         error: error.status === 403 ? error.message : 'GitHub rate limit reached. Connect GitHub or configure a development PAT.',
@@ -295,7 +301,7 @@ async function handleAnalyze(req, res) {
       });
     }
     console.error(error);
-    return sendJson(res, error.status || 500, { error: error.message || 'Unexpected server error.' });
+    return sendJson(res, error.status || 500, { error: error.message || 'Unexpected server error.', code: error.code || null });
   }
 }
 
@@ -317,12 +323,15 @@ async function handleCreateClientReport(req, res) {
   const audience = body.audience === 'founder' ? 'founder' : 'client';
   const snapshot = await getSnapshotByIdPersistent(snapshotId);
   if (!snapshot) return sendJson(res, 404, { error: 'Snapshot not found. Analyze the account first to create one.' });
-  if (snapshot.includePrivate) {
-    const auth = await resolveAuth(req);
-    assertPrivateAccess(auth, snapshot);
-    const usage = await consumeEntitlement(auth.workspaceId, 'report');
-    if (!usage.accepted) throw quotaError('report', usage);
-  }
+
+  const auth = await resolveAuth(req);
+  if (!auth) throw Object.assign(new Error('Connect GitHub to create stakeholder reports.'), { status: 401, code: 'github_connection_required' });
+  if (snapshot.includePrivate) assertPrivateAccess(auth, snapshot);
+  const entitlement = await entitlementSnapshot(auth.workspaceId);
+  if (entitlement.plan !== 'pro') throw proRequiredError('Client and founder reports');
+  const usage = await consumeEntitlement(auth.workspaceId, 'report');
+  if (!usage.accepted) throw quotaError('report', usage);
+
   if (!snapshot.evidence?.length) {
     return sendJson(res, 409, { error: 'This snapshot predates report-ready evidence storage. Refresh the analysis once, then generate the update again.' });
   }
@@ -523,7 +532,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'GET' && reportMatch) return await handleGetClientReport(req, reportMatch[1], res);
   } catch (error) {
     if (error.code === 'quota_exceeded') return sendJson(res, 429, { error: error.message, code: error.code, metric: error.metric, plan: error.plan, used: error.used, limit: error.limit });
-    return sendJson(res, error.status || 500, { error: error.message || 'Request failed.' });
+    if (error.code === 'pro_required') return sendJson(res, 402, { error: error.message, code: error.code });
+    return sendJson(res, error.status || 500, { error: error.message || 'Request failed.', code: error.code || null });
   }
 
   if (req.method === 'POST' && url.pathname === '/api/analyze') return handleAnalyze(req, res);
