@@ -59,6 +59,8 @@ REVENUECAT_API_KEY=
 REVENUECAT_ENTITLEMENT_ID=pro
 REVENUECAT_PURCHASE_LINK_URL=https://pay.rev.cat/<production-token>
 REVENUECAT_WEBHOOK_AUTH=<opaque-shared-authorization-value>
+REVENUECAT_CACHE_TTL_MS=60000
+REVENUECAT_TIMEOUT_MS=8000
 ```
 
 Dev30 does not persist a local Stripe subscription row and then infer Pro from it. Runtime access checks ask RevenueCat for the connected workspace customer and look for the configured entitlement.
@@ -70,7 +72,7 @@ GET https://api.revenuecat.com/v1/subscribers/{app_user_id}
 Authorization: Bearer <REVENUECAT_API_KEY>
 ```
 
-Customer info is cached briefly in memory. A RevenueCat webhook invalidates that cache for the affected `app_user_id`.
+Customer info is cached briefly in memory. A RevenueCat webhook invalidates that cache for the affected `app_user_id`. Customer lookups have a bounded timeout so interactive requests and scheduled work cannot hang indefinitely on the billing provider.
 
 The webhook endpoint is:
 
@@ -81,17 +83,17 @@ Authorization: <same opaque value configured as REVENUECAT_WEBHOOK_AUTH>
 
 The webhook is a cache-invalidation hint, not the source of entitlement truth. The next entitlement check still reads RevenueCat customer state.
 
-Checkout uses the configured RevenueCat Web Purchase Link with the Dev30 workspace ID appended as the RevenueCat App User ID. Subscription management uses RevenueCat's returned `management_url` when available.
+Checkout is enabled only when both the RevenueCat API key and Web Purchase Link are configured. The purchase link gets the Dev30 workspace ID appended as the RevenueCat App User ID. Subscription management uses RevenueCat's returned `management_url` when available.
 
 ## Provider-outage behavior
 
 Authorization fails closed: an unavailable RevenueCat lookup never grants Pro.
 
-Interactive Pro actions return an unavailable/upgrade result instead of silently granting access. Scheduled work additionally distinguishes an entitlement-provider outage from a real Free plan so a temporary RevenueCat outage is retryable rather than advancing and losing a paid user's weekly run.
+The shared entitlement boundary returns `503 entitlement_unavailable` when RevenueCat cannot resolve subscription state, rather than pretending a paid user is Free. Scheduled work treats that error as retryable instead of advancing and losing a paid user's weekly run.
 
 ## DeepSeek cost telemetry
 
-Every successful DeepSeek call records token usage returned by the provider as a structured log line:
+Every successful DeepSeek call records token usage returned by the provider as a structured **server-side** log line:
 
 ```text
 [dev30-ai] { ... }
@@ -106,13 +108,16 @@ Operations include:
 The estimate uses configurable rates:
 
 ```env
+DEEPSEEK_CACHE_HIT_INPUT_USD_PER_MILLION=0.0028
 DEEPSEEK_INPUT_USD_PER_MILLION=0.14
 DEEPSEEK_OUTPUT_USD_PER_MILLION=0.28
 ```
 
+When the provider supplies `prompt_cache_hit_tokens` and `prompt_cache_miss_tokens`, Dev30 prices those input buckets separately. If the breakdown is absent, Dev30 conservatively treats all prompt input as cache-miss input.
+
 These defaults are an estimate baseline, not a permanent provider-price contract. If DeepSeek pricing changes, update the environment values without changing application logic.
 
-Telemetry includes provider, operation, model, prompt/completion/total token counts, estimated cost, and the rates used. It intentionally does not include private repository content or a workspace identifier.
+Telemetry includes provider, operation, model, prompt/cache-hit/cache-miss/completion/total token counts, estimated cost, and the rates used. It intentionally does not include private repository content or a workspace identifier and is not returned in the user-facing report payload.
 
 ## Legacy Stripe boundary
 
