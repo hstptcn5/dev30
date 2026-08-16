@@ -1,9 +1,16 @@
 import { getSnapshotByIdPersistent, listSnapshotsPersistent } from './history-store.mjs';
 import { storageBackend } from './storage.mjs';
 
+const SUPPORTED_DAYS = new Set([7, 30, 90]);
+
+function normalizeDays(value) {
+  const parsed = Number(value);
+  return SUPPORTED_DAYS.has(parsed) ? parsed : 30;
+}
+
 function approximateWindow(snapshot) {
   const until = new Date(snapshot.generatedAt || Date.now());
-  const days = Number(snapshot.days || 30);
+  const days = normalizeDays(snapshot.days);
   return {
     days,
     until: until.toISOString(),
@@ -12,11 +19,12 @@ function approximateWindow(snapshot) {
 }
 
 export async function getSavedPublicReport({ username, days = 30, locale = 'en', productVersion = '1.0.0', analyzerVersion = null }) {
+  const normalizedDays = normalizeDays(days);
   const entries = await listSnapshotsPersistent({
     username,
-    days,
+    days: normalizedDays,
     includePrivate: false,
-    locale,
+    locale: locale === 'vi' ? 'vi' : 'en',
     workspaceId: null,
     limit: 24,
   });
@@ -78,3 +86,5 @@ export async function getSavedPublicReport({ username, days = 30, locale = 'en',
     },
   };
 }
+
+export const __publicReportTest = { normalizeDays };
