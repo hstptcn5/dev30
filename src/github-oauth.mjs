@@ -21,6 +21,8 @@ export function githubAppInstallUrl() {
 
 export function defaultCallbackUrl() {
   if (process.env.GITHUB_OAUTH_CALLBACK_URL) return process.env.GITHUB_OAUTH_CALLBACK_URL;
+  const baseUrl = String(process.env.APP_BASE_URL || '').trim().replace(/\/+$/, '');
+  if (baseUrl) return `${baseUrl}/auth/github/callback`;
   return `http://localhost:${Number(process.env.PORT || 3000)}/auth/github/callback`;
 }
 
@@ -52,7 +54,7 @@ async function tokenRequest(params) {
     headers: {
       Accept: 'application/json',
       'Content-Type': 'application/x-www-form-urlencoded',
-      'User-Agent': 'dev30/0.7',
+      'User-Agent': 'dev30/0.8',
     },
     body: new URLSearchParams(params),
   });
@@ -90,7 +92,7 @@ export async function fetchGitHubViewer(token) {
       Accept: 'application/vnd.github+json',
       Authorization: `Bearer ${token}`,
       'X-GitHub-Api-Version': API_VERSION,
-      'User-Agent': 'dev30/0.7',
+      'User-Agent': 'dev30/0.8',
     },
   });
   if (!response.ok) throw Object.assign(new Error(`GitHub user lookup failed (${response.status}).`), { status: response.status });
