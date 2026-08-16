@@ -8,6 +8,7 @@
 [functions]
   directory = "netlify/functions"
   node_bundler = "zisi"
+  included_files = ["server.mjs", "src/**"]
 
 [[redirects]]
   from = "/u/*"
