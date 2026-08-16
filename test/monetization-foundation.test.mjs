@@ -24,6 +24,7 @@ const RC_ENV = {
   REVENUECAT_PURCHASE_LINK_URL: 'https://pay.rev.cat/product-token',
   REVENUECAT_WEBHOOK_AUTH: 'Bearer dev30-revenuecat-webhook-test',
   REVENUECAT_CACHE_TTL_MS: '60000',
+  REVENUECAT_TIMEOUT_MS: '8000',
 };
 
 test('free and Pro quotas match the SaaS launch boundary', () => {
@@ -65,13 +66,17 @@ test('RevenueCat entitlement lookup grants Pro only for an active entitlement an
   }
 });
 
-test('RevenueCat purchase link binds checkout to the GitHub App User ID', async () => {
+test('RevenueCat purchase link binds checkout to the GitHub App User ID and requires entitlement lookup config', async () => {
   const checkout = await createCheckoutSession({ workspaceId: 'github:116537093', email: 'dev@example.com' }, RC_ENV);
   const url = new URL(checkout.url);
   assert.equal(url.origin, 'https://pay.rev.cat');
   assert.match(url.pathname, /product-token\/github%3A116537093$/);
   assert.equal(url.searchParams.get('email'), 'dev@example.com');
-  assert.equal(url.searchParams.get('skip_purchase_success'), 'true');
+  assert.equal(url.searchParams.get('skip_purchase_success'), null);
+  await assert.rejects(
+    () => createCheckoutSession({ workspaceId: 'github:1' }, { REVENUECAT_PURCHASE_LINK_URL: 'https://pay.rev.cat/product-token' }),
+    (error) => error.code === 'billing_not_configured' && error.status === 503,
+  );
 });
 
 test('RevenueCat webhook authorization is exact and invalidates the matching customer cache key', () => {
@@ -80,14 +85,32 @@ test('RevenueCat webhook authorization is exact and invalidates the matching cus
   assert.deepEqual(applyRevenueCatWebhook({ event: { app_user_id: 'github:42' } }), { handled: true, appUserId: 'github:42' });
 });
 
-test('DeepSeek telemetry converts returned token usage into an explicit estimated cost', () => {
-  const telemetry = normalizeAiUsage({ model: 'deepseek-v4-flash', usage: { prompt_tokens: 100_000, completion_tokens: 5_000, total_tokens: 105_000 } }, {
-    operation: 'analysis',
-    env: { DEEPSEEK_INPUT_USD_PER_MILLION: '0.14', DEEPSEEK_OUTPUT_USD_PER_MILLION: '0.28' },
-  });
+test('DeepSeek telemetry prices cache-hit and cache-miss input separately', () => {
+  const env = {
+    DEEPSEEK_CACHE_HIT_INPUT_USD_PER_MILLION: '0.0028',
+    DEEPSEEK_INPUT_USD_PER_MILLION: '0.14',
+    DEEPSEEK_OUTPUT_USD_PER_MILLION: '0.28',
+  };
+  const telemetry = normalizeAiUsage({
+    model: 'deepseek-v4-flash',
+    usage: {
+      prompt_tokens: 100_000,
+      prompt_cache_hit_tokens: 40_000,
+      prompt_cache_miss_tokens: 60_000,
+      completion_tokens: 5_000,
+      total_tokens: 105_000,
+    },
+  }, { operation: 'analysis', env });
   assert.equal(telemetry.promptTokens, 100_000);
+  assert.equal(telemetry.promptCacheHitTokens, 40_000);
+  assert.equal(telemetry.promptCacheMissTokens, 60_000);
   assert.equal(telemetry.completionTokens, 5_000);
-  assert.equal(telemetry.estimatedCostUsd, 0.0154);
+  assert.equal(telemetry.estimatedCostUsd, 0.009912);
+
+  const noBreakdown = normalizeAiUsage({ usage: { prompt_tokens: 100_000, completion_tokens: 5_000 } }, { env });
+  assert.equal(noBreakdown.promptCacheHitTokens, 0);
+  assert.equal(noBreakdown.promptCacheMissTokens, 100_000);
+  assert.equal(noBreakdown.estimatedCostUsd, 0.0154);
 });
 
 test('saved public reports remain readable without invoking GitHub or DeepSeek again', async () => {
