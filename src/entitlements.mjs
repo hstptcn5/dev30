@@ -72,7 +72,9 @@ export async function consumeEntitlement(workspaceId, metric, { now = new Date()
 
 export function quotaError(metric, result) {
   const error = new Error(`Dev30 ${result.plan || 'free'} plan quota reached for ${metric} (${result.used}/${result.limit}).`);
-  error.status = 429;
+  // API handlers explicitly map quota_exceeded to HTTP 429. Internally this is
+  // non-transient so the weekly scheduler advances instead of retrying hourly.
+  error.status = 403;
   error.code = 'quota_exceeded';
   error.metric = metric;
   error.plan = result.plan;
