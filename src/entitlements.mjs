@@ -29,6 +29,12 @@ function forcedPlan(env = process.env) {
   return forced === 'pro' || forced === 'free' ? forced : null;
 }
 
+function developmentPlan(env = process.env) {
+  const production = String(env.NODE_ENV || 'development').toLowerCase() === 'production';
+  if (!production && !String(env.REVENUECAT_API_KEY || '').trim()) return 'pro';
+  return null;
+}
+
 // Kept as a compatibility helper for older tests/data. Runtime entitlement resolution
 // no longer trusts locally persisted Stripe billing state.
 export function effectivePlan(billing, env = process.env) {
@@ -41,6 +47,8 @@ export function effectivePlan(billing, env = process.env) {
 export async function effectivePlanForWorkspace(workspaceId, env = process.env) {
   const forced = forcedPlan(env);
   if (forced) return { plan: forced, source: 'forced' };
+  const local = developmentPlan(env);
+  if (local) return { plan: local, source: 'development' };
   const resolved = await revenueCatPlan(workspaceId, env);
   return { plan: resolved.plan === 'pro' ? 'pro' : 'free', source: resolved.source || 'revenuecat' };
 }
@@ -126,3 +134,5 @@ export function proRequiredError(feature = 'This feature') {
   error.code = 'pro_required';
   return error;
 }
+
+export const __entitlementsTest = { forcedPlan, developmentPlan };
