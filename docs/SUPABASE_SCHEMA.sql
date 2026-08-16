@@ -68,6 +68,7 @@ create table if not exists public.dev30_schedules (
   hour_local smallint not null check (hour_local between 0 and 23),
   audience text not null check (audience in ('client', 'founder')),
   days integer not null default 7 check (days in (7, 30, 90)),
+  locale text not null default 'en' check (locale in ('en', 'vi')),
   enabled boolean not null default true,
   next_run_at timestamptz not null,
   lease_until timestamptz,
@@ -78,6 +79,13 @@ create table if not exists public.dev30_schedules (
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now()
 );
+
+-- Existing 1.0-pilot databases created before locale support can safely apply this migration too.
+alter table public.dev30_schedules add column if not exists locale text not null default 'en';
+do $$ begin
+  alter table public.dev30_schedules add constraint dev30_schedules_locale_check check (locale in ('en', 'vi'));
+exception when duplicate_object then null;
+end $$;
 
 create index if not exists dev30_schedules_due_idx
   on public.dev30_schedules (next_run_at)
