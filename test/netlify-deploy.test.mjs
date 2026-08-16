@@ -32,6 +32,30 @@ test('Netlify request bridge preserves path, query, headers, body, status and co
   assert.match(response.headers.get('set-cookie') || '', /b=2/);
 });
 
+test('Netlify function executes the existing Dev30 Node request listener', async () => {
+  const before = {
+    nodeEnv: process.env.NODE_ENV,
+    backend: process.env.DEV30_STORAGE_BACKEND,
+    appBaseUrl: process.env.APP_BASE_URL,
+  };
+  process.env.NODE_ENV = 'development';
+  process.env.DEV30_STORAGE_BACKEND = 'local';
+  delete process.env.APP_BASE_URL;
+  try {
+    const { default: netlifyHandler } = await import(`../netlify/functions/dev30.mjs?test=${Date.now()}`);
+    const response = await netlifyHandler(new Request('http://localhost/api/health'));
+    const payload = await response.json();
+    assert.equal(response.status, 200);
+    assert.equal(payload.ok, true);
+    assert.equal(payload.productVersion, '1.1.0');
+    assert.equal(payload.storage.backend, 'local');
+  } finally {
+    if (before.nodeEnv === undefined) delete process.env.NODE_ENV; else process.env.NODE_ENV = before.nodeEnv;
+    if (before.backend === undefined) delete process.env.DEV30_STORAGE_BACKEND; else process.env.DEV30_STORAGE_BACKEND = before.backend;
+    if (before.appBaseUrl === undefined) delete process.env.APP_BASE_URL; else process.env.APP_BASE_URL = before.appBaseUrl;
+  }
+});
+
 test('Netlify deployment keeps static shell on CDN and backend on Functions', async () => {
   const config = await readFile(new URL('../netlify.toml', import.meta.url), 'utf8');
   const fn = await readFile(new URL('../netlify/functions/dev30.mjs', import.meta.url), 'utf8');
