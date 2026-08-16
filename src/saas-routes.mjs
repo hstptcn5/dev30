@@ -94,13 +94,14 @@ async function runOneSchedule(schedule, deps) {
     const reportUsage = await consumeEntitlement(schedule.workspaceId, 'report');
     if (!reportUsage.accepted) throw quotaError('report', reportUsage);
 
+    const locale = schedule.locale === 'vi' ? 'vi' : 'en';
     const { dataset, payload } = await deps.withAuth(auth, () => deps.buildAnalysis({
       username: schedule.username,
-      locale: 'en',
+      locale,
       days: schedule.days,
       includePrivate: true,
     }));
-    const history = await deps.buildHistoryContext(dataset, payload, 'en');
+    const history = await deps.buildHistoryContext(dataset, payload, locale);
     const snapshot = history.snapshotId ? await getSnapshotByIdPersistent(history.snapshotId) : null;
     if (!snapshot) throw new Error('Scheduled analysis did not produce a persistent snapshot.');
     savedReport = await createReportForSnapshot(snapshot, schedule.audience);
@@ -164,7 +165,7 @@ async function runOneSchedule(schedule, deps) {
       providerId: delivered.id,
       status: 'sent',
       idempotencyKey,
-      lastError: emailUsage.accepted ? null : 'Delivered, but usage reconciliation exceeded the local entitlement snapshot.',
+      lastError: emailUsage.accepted ? null : 'Delivered, but usage reconciliation exceeded the entitlement snapshot.',
     });
     const nextRunAt = nextWeekly(schedule, new Date(scheduledFor));
     await completeSchedule({ id: schedule.id, nextRunAt, status: 'sent', reportId: savedReport.id });
