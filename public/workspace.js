@@ -1,23 +1,25 @@
 const $ = (selector) => document.querySelector(selector);
-const E = (tag, cls, text) => { const node = document.createElement(tag); if (cls) node.className = cls; if (text !== undefined) node.textContent = String(text); return node; };
+const E = (tag, cls, text) => {
+  const node = document.createElement(tag);
+  if (cls) node.className = cls;
+  if (text !== undefined) node.textContent = String(text);
+  return node;
+};
 
 function formatDate(value) {
   try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short' }).format(new Date(value)); } catch { return value || ''; }
 }
-
 function option(value, text, selected = false) {
   const node = E('option', '', text);
   node.value = String(value);
   node.selected = selected;
   return node;
 }
-
 function field(label, control) {
   const wrap = E('label', 'workspace-field');
   wrap.append(E('span', '', label), control);
   return wrap;
 }
-
 async function postJson(url, body = {}) {
   const response = await fetch(url, {
     method: 'POST',
@@ -29,73 +31,89 @@ async function postJson(url, body = {}) {
   return data;
 }
 
-function usageRow(metric, settings) {
-  const used = Number(settings.entitlement?.usage?.[metric] || 0);
-  const limit = Number(settings.entitlement?.limits?.[metric] || 0);
-  const row = E('div', 'usage-row');
-  row.append(E('span', '', metric.replaceAll('_', ' ')), E('strong', '', `${used} / ${limit}`));
-  return row;
+function latestSnapshotCard(workspace) {
+  const card = E('section', 'workspace-primary-card');
+  card.append(E('span', 'workspace-card-label', 'Latest activity snapshot'));
+  const latest = workspace.snapshots?.[0];
+  if (!latest) {
+    card.append(E('h2', '', 'No snapshot yet'), E('p', 'muted', 'Analyze your GitHub account once to start a private activity history.'));
+  } else {
+    card.append(
+      E('div', 'workspace-card-date', formatDate(latest.generatedAt)),
+      E('div', 'workspace-card-repo', latest.mainFocus?.repo || 'Recent GitHub work'),
+      E('h2', '', latest.mainFocus?.title || latest.headline || 'Latest developer activity'),
+    );
+    if (latest.headline && latest.headline !== latest.mainFocus?.title) card.append(E('p', 'muted', latest.headline));
+  }
+  const link = E('a', 'workspace-text-link', latest ? 'Run a fresh analysis →' : 'Analyze my account →');
+  link.href = '/';
+  card.append(link);
+  return card;
 }
 
-function renderPlanCard(settings) {
-  const card = E('section', 'card half');
-  card.append(E('h3', '', 'Plan & usage'));
-  const plan = E('div', 'workspace-plan');
-  plan.append(E('strong', '', String(settings.entitlement?.plan || 'free').toUpperCase()), E('span', 'muted', `Usage period ${settings.entitlement?.periodStart || ''}`));
-  card.append(plan);
-  const usage = E('div', 'usage-list');
-  ['analysis', 'report', 'scheduled_run', 'email_delivery'].forEach((metric) => usage.append(usageRow(metric, settings)));
-  card.append(usage);
-
-  const actions = E('div', 'profile-actions workspace-plan-actions');
-  if (settings.billing?.configured) {
-    const isPro = settings.entitlement?.plan === 'pro';
-    const button = E('button', 'action-button', isPro ? 'Manage billing' : 'Upgrade to Pro');
-    button.type = 'button';
-    button.onclick = async () => {
-      button.disabled = true;
-      try {
-        const result = await postJson(isPro ? '/api/billing/portal' : '/api/billing/checkout');
-        if (result.url) location.href = result.url;
-      } catch (error) {
-        alert(error.message);
-        button.disabled = false;
-      }
-    };
-    actions.append(button);
-  } else {
-    actions.append(E('span', 'muted', 'Billing is not configured on this instance.'));
+function changeCard(workspace) {
+  const card = E('section', 'workspace-summary-card');
+  card.append(E('span', 'workspace-card-label', 'Since last snapshot'));
+  const [latest, previous] = workspace.snapshots || [];
+  if (!latest || !previous) {
+    card.append(E('strong', '', 'Waiting for a second snapshot'), E('p', 'muted', 'Come back after more GitHub activity and Dev30 will make progress comparable.'));
+    return card;
   }
-  card.append(actions);
+  const currentRepo = latest.mainFocus?.repo || '';
+  const previousRepo = previous.mainFocus?.repo || '';
+  if (currentRepo && previousRepo && currentRepo !== previousRepo) {
+    card.append(E('strong', '', `Focus moved to ${currentRepo}`), E('p', 'muted', `Previous snapshot centered on ${previousRepo}. Open a fresh report for the evidence-backed delta.`));
+  } else {
+    card.append(E('strong', '', currentRepo ? `Focus still centers on ${currentRepo}` : 'Progress history is growing'), E('p', 'muted', `${workspace.snapshots.length} saved snapshots are available in this workspace.`));
+  }
+  return card;
+}
+
+function scheduleSummaryCard(settings) {
+  const card = E('section', 'workspace-summary-card');
+  card.append(E('span', 'workspace-card-label', 'Next stakeholder update'));
+  const schedule = settings.schedule;
+  if (!schedule?.enabled) {
+    card.append(E('strong', '', 'Not scheduled yet'), E('p', 'muted', 'Turn your saved activity into an automatic weekly client or founder update.'));
+    const jump = E('button', 'workspace-text-button', 'Set up weekly update →');
+    jump.type = 'button';
+    jump.onclick = () => document.querySelector('#automation')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    card.append(jump);
+    return card;
+  }
+  card.append(
+    E('strong', '', formatDate(schedule.nextRunAt)),
+    E('p', 'muted', `${schedule.audience === 'founder' ? 'Founder' : 'Client'} update · ${schedule.days || 7}-day window · ${schedule.locale === 'vi' ? 'Tiếng Việt' : 'English'}`),
+  );
   return card;
 }
 
 function renderScheduleCard(settings, rerender) {
   const schedule = settings.schedule || null;
-  const card = E('section', 'card half');
-  card.append(E('h3', '', 'Weekly stakeholder report'));
-  if (!settings.durableConnectionReady) {
-    card.append(E('p', 'notice', 'Set DEV30_SESSION_SECRET before enabling schedules. The durable GitHub connection must survive server restarts.'));
-  }
-  if (!settings.email?.configured) {
-    card.append(E('p', 'muted', 'Email provider is not configured yet. Dev30 can still save the scheduled report, but delivery will be skipped until RESEND_API_KEY and DEV30_EMAIL_FROM are set.'));
-  }
+  const section = E('section', 'workspace-section');
+  section.id = 'automation';
+  const heading = E('div', 'workspace-section-head');
+  heading.append(E('div', '', 'Weekly update'), E('p', 'muted', 'Automatically turn your GitHub activity into a stakeholder-ready report.'));
+  section.append(heading);
+
+  if (!settings.durableConnectionReady) section.append(E('p', 'workspace-callout', 'A persistent DEV30_SESSION_SECRET is required before scheduled reports can survive server restarts.'));
+  if (!settings.email?.configured) section.append(E('p', 'workspace-soft-note', 'Email delivery is not configured on this instance. Scheduled reports can still be prepared and saved.'));
 
   const form = E('form', 'workspace-form');
   const email = E('input'); email.type = 'email'; email.required = true; email.placeholder = 'you@example.com'; email.value = schedule?.email || '';
   const day = E('select'); ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'].forEach((name, index) => day.append(option(index, name, Number(schedule?.dayOfWeek ?? 1) === index)));
-  const hour = E('select'); for (let h = 0; h < 24; h += 1) hour.append(option(h, `${String(h).padStart(2, '0')}:00`, Number(schedule?.hourLocal ?? 8) === h));
+  const hour = E('select'); for (let value = 0; value < 24; value += 1) hour.append(option(value, `${String(value).padStart(2, '0')}:00`, Number(schedule?.hourLocal ?? 8) === value));
   const audience = E('select'); audience.append(option('client', 'Client update', (schedule?.audience || 'client') === 'client'), option('founder', 'Founder update', schedule?.audience === 'founder'));
-  const days = E('select'); [7,30,90].forEach((value) => days.append(option(value, `${value} day evidence window`, Number(schedule?.days || 7) === value)));
-  const locale = E('select'); locale.append(option('en', 'English', (schedule?.locale || 'en') === 'en'), option('vi', 'Tiếng Việt', schedule?.locale === 'vi'));
+  const windowSelect = E('select'); [7,30,90].forEach((value) => windowSelect.append(option(value, `${value} day evidence window`, Number(schedule?.days || 7) === value)));
+  const localeSelect = E('select'); localeSelect.append(option('en', 'English', (schedule?.locale || 'en') === 'en'), option('vi', 'Tiếng Việt', schedule?.locale === 'vi'));
   const timezone = E('input'); timezone.required = true; timezone.value = schedule?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  form.append(field('Delivery email', email), field('Day', day), field('Local hour', hour), field('Audience', audience), field('Evidence window', days), field('Report language', locale), field('Timezone', timezone));
+  form.append(field('Send to', email), field('Day', day), field('Local hour', hour), field('Audience', audience), field('Evidence window', windowSelect), field('Language', localeSelect), field('Timezone', timezone));
 
-  const actions = E('div', 'profile-actions workspace-form-actions');
-  const save = E('button', 'action-button', schedule?.enabled ? 'Update weekly report' : 'Enable weekly report'); save.type = 'submit';
+  const actions = E('div', 'workspace-form-actions');
+  const save = E('button', 'workspace-primary-button', schedule?.enabled ? 'Update schedule' : 'Enable weekly update'); save.type = 'submit';
   actions.append(save);
   if (schedule?.enabled) {
-    const disable = E('button', 'action-button secondary', 'Disable'); disable.type = 'button';
+    const disable = E('button', 'workspace-secondary-button', 'Disable'); disable.type = 'button';
     disable.onclick = async () => {
       disable.disabled = true;
       try { await postJson('/api/schedule/disable'); await rerender(); } catch (error) { alert(error.message); disable.disabled = false; }
@@ -112,8 +130,8 @@ function renderScheduleCard(settings, rerender) {
         dayOfWeek: Number(day.value),
         hourLocal: Number(hour.value),
         audience: audience.value,
-        days: Number(days.value),
-        locale: locale.value,
+        days: Number(windowSelect.value),
+        locale: localeSelect.value,
         timezone: timezone.value,
         enabled: true,
       });
@@ -123,30 +141,129 @@ function renderScheduleCard(settings, rerender) {
       save.disabled = false;
     }
   };
-  card.append(form);
+  section.append(form);
 
   if (schedule) {
     const status = E('div', 'schedule-status');
     status.append(
-      E('span', '', schedule.enabled ? 'Enabled' : 'Disabled'),
-      E('span', 'muted', `Next: ${formatDate(schedule.nextRunAt)}`),
-      E('span', 'muted', `${schedule.locale === 'vi' ? 'Tiếng Việt' : 'English'} · ${schedule.days || 7} day window`),
-      E('span', 'muted', schedule.lastRunAt ? `Last: ${formatDate(schedule.lastRunAt)} · ${schedule.lastStatus || 'unknown'}` : 'No scheduled run yet'),
+      E('span', schedule.enabled ? 'schedule-enabled' : '', schedule.enabled ? 'Enabled' : 'Disabled'),
+      E('span', 'muted', schedule.nextRunAt ? `Next ${formatDate(schedule.nextRunAt)}` : 'No next run'),
+      E('span', 'muted', schedule.lastRunAt ? `Last ${formatDate(schedule.lastRunAt)} · ${schedule.lastStatus || 'unknown'}` : 'No scheduled run yet'),
     );
     if (schedule.lastError) status.append(E('span', 'status error', schedule.lastError));
-    card.append(status);
+    section.append(status);
   }
-  return card;
+  return section;
+}
+
+function recentActivity(workspace) {
+  const section = E('section', 'workspace-section');
+  const heading = E('div', 'workspace-section-head');
+  heading.append(E('div', '', 'Recent history'), E('p', 'muted', 'Your saved snapshots and stakeholder-ready outputs.'));
+  section.append(heading);
+  const grid = E('div', 'workspace-history-columns');
+
+  const snapshots = E('div', 'workspace-list-panel');
+  snapshots.append(E('span', 'workspace-card-label', 'Snapshots'));
+  const snapshotList = E('div', 'workspace-list');
+  (workspace.snapshots || []).slice(0, 8).forEach((item) => {
+    const row = E('div', 'workspace-list-row');
+    const copy = E('div');
+    copy.append(E('strong', '', item.mainFocus?.repo || 'Activity snapshot'), E('span', '', item.mainFocus?.title || item.headline || 'Saved analysis'));
+    row.append(copy, E('time', '', formatDate(item.generatedAt)));
+    snapshotList.append(row);
+  });
+  if (!snapshotList.childNodes.length) snapshotList.append(E('p', 'muted', 'No private snapshots yet.'));
+  snapshots.append(snapshotList);
+
+  const reports = E('div', 'workspace-list-panel');
+  reports.append(E('span', 'workspace-card-label', 'Stakeholder reports'));
+  const reportList = E('div', 'workspace-list');
+  (workspace.reports || []).slice(0, 8).forEach((item) => {
+    const row = E('div', 'workspace-list-row');
+    const copy = E('div');
+    copy.append(E('strong', '', item.title || 'Stakeholder update'), E('span', '', item.audience === 'founder' ? 'Founder update' : 'Client update'));
+    row.append(copy, E('time', '', formatDate(item.createdAt)));
+    reportList.append(row);
+  });
+  if (!reportList.childNodes.length) reportList.append(E('p', 'muted', 'No stakeholder reports yet. Generate one from a saved analysis.'));
+  reports.append(reportList);
+  grid.append(snapshots, reports);
+  section.append(grid);
+  return section;
+}
+
+function usageRow(metric, settings) {
+  const used = Number(settings.entitlement?.usage?.[metric] || 0);
+  const limit = Number(settings.entitlement?.limits?.[metric] || 0);
+  const row = E('div', 'usage-row');
+  row.append(E('span', '', metric.replaceAll('_', ' ')), E('strong', '', `${used} / ${limit}`));
+  return row;
+}
+
+function settingsPanel(workspace, settings) {
+  const details = E('details', 'workspace-settings');
+  details.append(E('summary', '', 'Workspace settings'));
+  const body = E('div', 'workspace-settings-body');
+
+  const access = E('section', 'workspace-settings-card');
+  access.append(E('span', 'workspace-card-label', 'Repository access'));
+  const accessText = workspace.access?.readyForPrivateAnalysis
+    ? `${workspace.access.privateReposAccessible} private repositories available`
+    : `Private access not ready · ${workspace.access?.status || 'unknown'}`;
+  access.append(E('strong', '', accessText), E('p', 'muted', workspace.authMode === 'pat' ? 'Local development connection' : 'GitHub App connection'));
+
+  const plan = E('section', 'workspace-settings-card');
+  plan.append(E('span', 'workspace-card-label', 'Plan & usage'), E('strong', '', String(settings.entitlement?.plan || 'free').toUpperCase()));
+  const usage = E('div', 'usage-list');
+  ['analysis', 'report', 'scheduled_run', 'email_delivery'].forEach((metric) => usage.append(usageRow(metric, settings)));
+  plan.append(usage);
+  if (settings.billing?.configured) {
+    const isPro = settings.entitlement?.plan === 'pro';
+    const billing = E('button', 'workspace-secondary-button', isPro ? 'Manage billing' : 'Upgrade to Pro');
+    billing.type = 'button';
+    billing.onclick = async () => {
+      billing.disabled = true;
+      try {
+        const result = await postJson(isPro ? '/api/billing/portal' : '/api/billing/checkout');
+        if (result.url) location.href = result.url;
+      } catch (error) { alert(error.message); billing.disabled = false; }
+    };
+    plan.append(billing);
+  }
+
+  if (workspace.authMode === 'github-app') {
+    const disconnect = E('section', 'workspace-settings-card danger-zone');
+    disconnect.append(E('span', 'workspace-card-label', 'Connection'), E('strong', '', 'Disconnect GitHub'), E('p', 'muted', 'This also disables scheduled work and removes the durable GitHub credential for this workspace.'));
+    const button = E('button', 'workspace-secondary-button', 'Disconnect');
+    button.type = 'button';
+    button.onclick = async () => {
+      if (!confirm('Disconnect GitHub and stop scheduled work for this workspace?')) return;
+      button.disabled = true;
+      try {
+        const result = await postJson('/api/disconnect');
+        if (result.disconnected !== true) throw new Error('Disconnect did not complete.');
+        location.href = '/';
+      } catch (error) { alert(error.message); button.disabled = false; }
+    };
+    disconnect.append(button);
+    body.append(access, plan, disconnect);
+  } else {
+    body.append(access, plan);
+  }
+  details.append(body);
+  return details;
 }
 
 async function renderWorkspace() {
   if (location.pathname !== '/workspace') return;
   $('.hero')?.classList.add('hidden');
+  $('.example-preview')?.classList.add('hidden');
   $('.value-strip')?.classList.add('hidden');
   const root = $('#report');
   if (!root) return;
   root.classList.remove('hidden');
-  root.replaceChildren(E('div', 'status', 'Loading your GitHub workspace…'));
+  root.replaceChildren(E('div', 'status', 'Loading your workspace…'));
 
   try {
     const [workspaceResponse, settingsResponse] = await Promise.all([
@@ -159,39 +276,16 @@ async function renderWorkspace() {
     if (!settingsResponse.ok) throw new Error(settings.error || 'Workspace settings unavailable.');
 
     root.replaceChildren();
-    const head = E('section', 'card workspace-hero');
-    const title = E('div');
-    title.append(E('span', 'eyebrow', 'Your Dev30 workspace'), E('h2', 'workspace-title', workspace.viewer.name || workspace.viewer.login), E('p', 'muted', `@${workspace.viewer.login} · ${workspace.authMode} · ${workspace.workspaceId} · storage ${workspace.persistence}`));
-    const actions = E('div', 'profile-actions');
-    const analyze = E('a', 'action-button', 'Analyze my account'); analyze.href = '/';
-    const install = workspace.access?.readyForPrivateAnalysis ? null : E('a', 'action-button secondary', 'Choose repositories');
-    if (install) { install.href = '/'; install.onclick = async (event) => { event.preventDefault(); const me = await fetch('/api/me').then((r) => r.json()); if (me.installUrl) location.href = me.installUrl; }; }
-    actions.append(analyze); if (install) actions.append(install);
-    head.append(title, actions); root.append(head);
+    const head = E('header', 'workspace-hero');
+    const copy = E('div');
+    copy.append(E('span', 'eyebrow', 'Your developer journal'), E('h1', 'workspace-title', workspace.viewer.name || workspace.viewer.login), E('p', 'muted', `@${workspace.viewer.login} · ${workspace.snapshots?.length || 0} saved snapshots · ${workspace.reports?.length || 0} stakeholder reports`));
+    const analyze = E('a', 'workspace-primary-button', 'Analyze latest work'); analyze.href = '/';
+    head.append(copy, analyze);
+    root.append(head);
 
-    const access = E('section', 'card');
-    access.append(E('h3', '', 'Repository access'));
-    const status = workspace.access?.readyForPrivateAnalysis
-      ? `Private access ready · ${workspace.access.privateReposAccessible} private repositories accessible`
-      : `Private access not ready · ${workspace.access?.status || 'unknown'}`;
-    access.append(E('p', 'big-takeaway workspace-access', status)); root.append(access);
-
-    const controls = E('div', 'grid');
-    controls.append(renderPlanCard(settings), renderScheduleCard(settings, renderWorkspace));
-    root.append(controls);
-
-    const grid = E('div', 'grid workspace-history-grid');
-    const snapshots = E('section', 'card half'); snapshots.append(E('h3', '', 'Recent snapshots'));
-    const snapshotList = E('div', 'project-list');
-    (workspace.snapshots || []).forEach((item) => { const row = E('div', 'project'); row.append(E('strong', '', formatDate(item.generatedAt)), E('p', 'muted', `${item.mainFocus?.repo || 'No focus'} — ${item.mainFocus?.title || item.headline || ''}`)); snapshotList.append(row); });
-    if (!snapshotList.childNodes.length) snapshotList.append(E('p', 'muted', 'No private snapshots yet. Analyze your account first.'));
-    snapshots.append(snapshotList);
-
-    const reports = E('section', 'card half'); reports.append(E('h3', '', 'Stakeholder reports'));
-    const reportList = E('div', 'project-list');
-    (workspace.reports || []).forEach((item) => { const row = E('div', 'project'); row.append(E('strong', '', item.title || 'Stakeholder update'), E('p', 'muted', `${formatDate(item.createdAt)} · ${item.audience}`)); reportList.append(row); });
-    if (!reportList.childNodes.length) reportList.append(E('p', 'muted', 'No private stakeholder reports yet.'));
-    reports.append(reportList); grid.append(snapshots, reports); root.append(grid);
+    const overview = E('div', 'workspace-overview');
+    overview.append(latestSnapshotCard(workspace), changeCard(workspace), scheduleSummaryCard(settings));
+    root.append(overview, recentActivity(workspace), renderScheduleCard(settings, renderWorkspace), settingsPanel(workspace, settings));
   } catch (error) {
     root.replaceChildren(E('div', 'status error', error.message));
   }

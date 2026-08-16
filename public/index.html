@@ -3,11 +3,12 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Dev30 turns recent GitHub activity into evidence-backed developer reports, snapshot history, and stakeholder-ready weekly updates." />
-  <title>Dev30 — Evidence-backed developer activity</title>
+  <meta name="description" content="Dev30 explains what a developer actually built from recent GitHub work, with evidence behind every important claim." />
+  <title>Dev30 — Understand what someone actually built</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/client-report.css" />
   <link rel="stylesheet" href="/workspace.css" />
+  <link rel="stylesheet" href="/ux-overrides.css" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -15,18 +16,26 @@
   <main class="shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Dev30 home"><span class="brand-mark">D30</span><span>Dev30</span></a>
-      <div class="top-meta"><span class="beta">pilot ready</span><span id="runtime-badge" class="runtime-badge">checking runtime…</span></div>
+      <nav class="top-actions" aria-label="Dev30 navigation">
+        <a id="workspace-nav" class="top-link hidden" href="/workspace">Workspace</a>
+        <span class="beta">pilot</span>
+        <span id="runtime-badge" class="runtime-badge">checking…</span>
+      </nav>
     </header>
 
     <section class="hero">
-      <p class="eyebrow">GitHub activity → understandable work</p>
-      <h1>See what a developer <em>actually shipped.</em></h1>
-      <p class="hero-copy">Dev30 reconstructs recent GitHub work into plain-language project summaries, technical signals, persistent snapshot history, and stakeholder-ready updates backed by evidence.</p>
+      <div class="hero-copy-block">
+        <p class="eyebrow">GitHub activity → understandable work</p>
+        <h1>Understand what someone <em>actually built.</em></h1>
+        <p class="hero-copy">Enter a GitHub username. Dev30 reconstructs recent work into a short, evidence-backed briefing you can understand in about 30 seconds.</p>
+      </div>
 
       <form id="analyze-form" class="search-card">
-        <div class="search-row">
+        <label class="username-field" for="username">
           <span class="prefix">github.com/</span>
-          <input id="username" name="username" autocomplete="off" spellcheck="false" maxlength="39" placeholder="hstptcn5" aria-label="GitHub username" />
+          <input id="username" name="username" autocomplete="off" spellcheck="false" maxlength="39" placeholder="username" aria-label="GitHub username" />
+        </label>
+        <div class="search-controls">
           <select id="days" aria-label="Analysis window">
             <option value="7">7 days</option>
             <option value="30" selected>30 days</option>
@@ -36,28 +45,49 @@
             <option value="en">English</option>
             <option value="vi">Tiếng Việt</option>
           </select>
-          <button id="analyze-button" type="submit">Analyze</button>
+          <button id="analyze-button" class="primary-button" type="submit">See their work</button>
         </div>
         <div class="search-foot">
-          <button class="example-link" type="button" data-example="hstptcn5">Try hstptcn5</button>
-          <span>Fresh reports are saved to persistent snapshot history. Public reports keep a shareable <code>/u/username</code> URL.</span>
+          <button class="example-link" type="button" data-example="hstptcn5">Try an example →</button>
+          <span>Public GitHub only unless you explicitly include your connected private repositories.</span>
         </div>
       </form>
 
-      <section id="account-panel" class="account-panel hidden">
-        <div>
-          <span class="account-kicker">Connected GitHub</span>
-          <strong id="account-name"></strong>
-          <p>Analyze your own account with private repositories included. Private reports, snapshot history, schedules, and stakeholder updates stay scoped to your Dev30 workspace.</p>
+      <section id="account-panel" class="account-inline hidden" aria-label="Connected GitHub account">
+        <div class="account-identity">
+          <span class="connection-dot"></span>
+          <div>
+            <strong id="account-name"></strong>
+            <small id="account-note">GitHub connected</small>
+          </div>
         </div>
-        <button id="account-button" type="button">Analyze my account</button>
+        <label id="private-toggle-wrap" class="private-toggle hidden">
+          <input id="private-toggle" type="checkbox" />
+          <span>Include my private repositories</span>
+        </label>
+        <div id="account-actions" class="account-actions"></div>
       </section>
     </section>
 
-    <section class="value-strip" aria-label="Dev30 product features">
-      <div><strong>Evidence-first</strong><span>Claims link back to PRs and commits.</span></div>
-      <div><strong>Comparable history</strong><span>Track project focus and work changes over time.</span></div>
-      <div><strong>Weekly updates</strong><span>Generate and optionally deliver client/founder-ready reports.</span></div>
+    <section id="example-preview" class="example-preview" aria-label="Example Dev30 output">
+      <div class="preview-intro">
+        <span class="section-kicker">What you get</span>
+        <h2>A briefing, not another activity dashboard.</h2>
+        <p>Dev30 starts with the work story. Technical details and raw GitHub evidence stay one click away.</p>
+      </div>
+      <div class="preview-card">
+        <div class="preview-card-top"><span>GOFLOW</span><span>Example · 30 days</span></div>
+        <h3>Turned a workflow engine into something closer to a distributable product.</h3>
+        <p>Most visible work moved through packaging, Windows reliability, end-to-end validation and release preparation.</p>
+        <div class="preview-meta"><span>Productization</span><span>Release</span><span>Reliability</span></div>
+        <div class="preview-proof">Evidence-backed · PRs and commits available on demand</div>
+      </div>
+    </section>
+
+    <section class="value-strip" aria-label="Dev30 principles">
+      <div><strong>Read the story first</strong><span>Start with what changed and what shipped.</span></div>
+      <div><strong>Inspect when needed</strong><span>Technical signals and evidence stay available without dominating the page.</span></div>
+      <div><strong>Come back later</strong><span>Snapshots make progress comparable over time.</span></div>
     </section>
 
     <section id="status" class="status hidden" aria-live="polite"></section>
@@ -65,7 +95,7 @@
 
     <footer>
       <span>Dev30</span>
-      <span>Claims should be explainable. Progress should be comparable.</span>
+      <span>Understand the work. Verify the evidence.</span>
     </footer>
   </main>
   <script type="module" src="/app.js"></script>
