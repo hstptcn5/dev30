@@ -20,6 +20,7 @@ import {
   remoteUpsertBilling,
   remoteUpsertSchedule,
   storageBackend,
+  supabaseSecret,
 } from './storage.mjs';
 
 const STORE_VERSION = 1;
@@ -86,6 +87,21 @@ function normalizeMetric(metric) {
   return value;
 }
 
+async function deleteRemoteConnection(workspaceId) {
+  const baseUrl = String(process.env.SUPABASE_URL || '').trim().replace(/\/+$/, '');
+  const secret = supabaseSecret();
+  if (!baseUrl || !secret) throw Object.assign(new Error('Supabase storage is not configured.'), { status: 503 });
+  const url = new URL(`${baseUrl}/rest/v1/dev30_connections`);
+  url.searchParams.set('workspace_id', `eq.${workspaceId}`);
+  const headers = { apikey: secret, 'User-Agent': 'dev30/1.0-storage' };
+  if (!secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${secret}`;
+  const response = await fetch(url, { method: 'DELETE', headers });
+  if (!response.ok) {
+    const detail = await response.text().catch(() => '');
+    throw Object.assign(new Error(`Supabase connection delete failed (${response.status})${detail ? `: ${detail.slice(0, 240)}` : ''}`), { status: 503 });
+  }
+}
+
 export async function saveWorkspaceConnection(entry) {
   if (storageBackend() === 'supabase') return remoteSaveWorkspaceConnection(entry);
   return mutate((store) => {
@@ -119,6 +135,19 @@ export async function updateWorkspaceConnectionCredential(workspaceId, encrypted
     entry.encryptedCredential = encryptedCredential;
     entry.updatedAt = nowIso();
     return entry;
+  });
+}
+
+export async function deleteWorkspaceConnection(workspaceId) {
+  if (!workspaceId) return false;
+  if (storageBackend() === 'supabase') {
+    await deleteRemoteConnection(workspaceId);
+    return true;
+  }
+  return mutate((store) => {
+    const before = store.connections.length;
+    store.connections = store.connections.filter((item) => item.workspaceId !== workspaceId);
+    return store.connections.length !== before;
   });
 }
 
