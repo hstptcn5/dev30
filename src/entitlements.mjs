@@ -72,8 +72,25 @@ export async function entitlementSnapshot(workspaceId, { now = new Date(), env =
   };
 }
 
+export function assertProEntitlement(snapshot, feature = 'This feature') {
+  if (snapshot?.billing?.source === 'revenuecat_error') {
+    const error = new Error('Subscription status is temporarily unavailable. Please try again shortly.');
+    error.status = 503;
+    error.code = 'entitlement_unavailable';
+    throw error;
+  }
+  if (snapshot?.plan !== 'pro') throw proRequiredError(feature);
+  return snapshot;
+}
+
 export async function consumeEntitlement(workspaceId, metric, { now = new Date(), amount = 1, env = process.env } = {}) {
   const snapshot = await entitlementSnapshot(workspaceId, { now, env });
+  if (snapshot.billing?.source === 'revenuecat_error') {
+    const error = new Error('Subscription status is temporarily unavailable. Please try again shortly.');
+    error.status = 503;
+    error.code = 'entitlement_unavailable';
+    throw error;
+  }
   const limit = Number(snapshot.limits[metric]);
   if (!Number.isFinite(limit)) throw new Error(`Unknown entitlement metric: ${metric}`);
   const result = await consumeUsage({
