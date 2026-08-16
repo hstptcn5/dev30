@@ -9,6 +9,7 @@ import { nextScheduledRun, schedulePayload, validEmail, validTimezone } from '..
 import { effectivePlan, periodStartFor, PLAN_LIMITS } from '../src/entitlements.mjs';
 import { billingConfig, verifyStripeSignature, applyStripeEvent } from '../src/billing.mjs';
 import { emailConfig, renderStakeholderEmail, sendEmail } from '../src/email.mjs';
+import { remoteUpsertSchedule } from '../src/storage.mjs';
 import {
   claimDueSchedules,
   completeSchedule,
@@ -42,7 +43,7 @@ test('weekly scheduler resolves Asia/Ho_Chi_Minh local time and validates inputs
   assert.equal(validTimezone('Asia/Ho_Chi_Minh'), true);
   assert.equal(validTimezone('Not/AZone'), false);
 
-  const after = new Date('2026-08-16T00:00:00.000Z'); // Sunday 07:00 in Vietnam
+  const after = new Date('2026-08-16T00:00:00.000Z');
   const next = nextScheduledRun({ dayOfWeek: 1, hourLocal: 8, timezone: 'Asia/Ho_Chi_Minh', after });
   assert.equal(next.toISOString(), '2026-08-17T01:00:00.000Z');
 
@@ -58,6 +59,38 @@ test('weekly scheduler resolves Asia/Ho_Chi_Minh local time and validates inputs
   assert.equal(payload.locale, 'vi');
   assert.equal(payload.audience, 'founder');
   assert.equal(payload.nextRunAt, '2026-08-17T01:00:00.000Z');
+});
+
+test('hosted schedule persistence sends and returns the selected report locale', async () => {
+  const old = {
+    backend: process.env.DEV30_STORAGE_BACKEND,
+    url: process.env.SUPABASE_URL,
+    secret: process.env.SUPABASE_SECRET_KEY,
+    fetch: globalThis.fetch,
+  };
+  process.env.DEV30_STORAGE_BACKEND = 'supabase';
+  process.env.SUPABASE_URL = 'https://project.supabase.co';
+  process.env.SUPABASE_SECRET_KEY = 'sb_secret_test';
+  let posted;
+  globalThis.fetch = async (_url, options = {}) => {
+    if ((options.method || 'GET') === 'GET') return new Response('[]', { status: 200, headers: { 'Content-Type': 'application/json' } });
+    posted = JSON.parse(options.body);
+    return new Response(JSON.stringify([{ ...posted, id: '11111111-1111-1111-1111-111111111111' }]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+  };
+  try {
+    const schedule = await remoteUpsertSchedule({
+      workspaceId: 'github:1', username: 'octo', email: 'dev@example.com', timezone: 'Asia/Ho_Chi_Minh',
+      dayOfWeek: 1, hourLocal: 8, audience: 'client', days: 7, locale: 'vi', enabled: true,
+      nextRunAt: '2026-08-17T01:00:00.000Z',
+    });
+    assert.equal(posted.locale, 'vi');
+    assert.equal(schedule.locale, 'vi');
+  } finally {
+    globalThis.fetch = old.fetch;
+    if (old.backend === undefined) delete process.env.DEV30_STORAGE_BACKEND; else process.env.DEV30_STORAGE_BACKEND = old.backend;
+    if (old.url === undefined) delete process.env.SUPABASE_URL; else process.env.SUPABASE_URL = old.url;
+    if (old.secret === undefined) delete process.env.SUPABASE_SECRET_KEY; else process.env.SUPABASE_SECRET_KEY = old.secret;
+  }
 });
 
 test('plan selection is fail-closed unless an active matching billing state exists', () => {
