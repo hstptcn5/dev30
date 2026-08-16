@@ -1,0 +1,270 @@
+:root{
+  color-scheme:light;
+  --bg:#f7f8f5;
+  --panel:#ffffff;
+  --panel-2:#f3f6f3;
+  --panel-3:#edf2ee;
+  --line:#20312918;
+  --line-strong:#2031292b;
+  --text:#18221d;
+  --muted:#65716a;
+  --subtle:#89938d;
+  --accent:#2c7455;
+  --accent-strong:#235f45;
+  --blue:#356eb8;
+  --danger:#b24b4b;
+  --shadow:0 22px 64px #26342d18;
+
+  --pm-bg:#f7f8f5;
+  --pm-surface:#ffffff;
+  --pm-surface-soft:#f3f6f3;
+  --pm-ink:#18221d;
+  --pm-copy:#34443b;
+  --pm-muted:#65716a;
+  --pm-faint:#89938d;
+  --pm-line:#20312918;
+  --pm-line-strong:#2031292b;
+  --pm-accent:#2c7455;
+  --pm-accent-ink:#ffffff;
+  --pm-blue:#356eb8;
+  --pm-shadow:0 22px 64px #26342d18;
+}
+
+/* UI UX Pro Max Personal: explicit user preference -> warm-light editorial theme. */
+body{
+  background:
+    radial-gradient(circle at 54% -180px,#dcece2 0,transparent 460px),
+    linear-gradient(180deg,#fbfcfa 0,#f7f8f5 52%,#f5f6f3 100%);
+  color:var(--text);
+}
+
+.brand,.top-link{color:var(--text)}
+.brand-mark{
+  color:var(--accent);
+  background:#ffffffcc;
+  border-color:var(--pm-line-strong);
+  box-shadow:0 4px 14px #26342d0b;
+}
+.beta,.pill,.tag,.confidence,.runtime-badge{
+  color:var(--muted);
+  background:#ffffff9c;
+  border-color:var(--pm-line);
+}
+.top-link:hover{color:var(--text);background:#20312908}
+h1 em{color:#59675f}
+.eyebrow,.section-kicker,.story-label,.project-repo,.focus-repo,.history-kicker,.workspace-card-label{color:var(--accent)}
+.hero-copy,.muted,.preview-intro p,.value-strip span,.focus-copy p,.project-card>p,.section-heading p{color:var(--muted)}
+
+/* Primary command surface */
+.search-card{
+  background:linear-gradient(180deg,#ffffff,#f6f8f6);
+  border-color:var(--pm-line-strong);
+  box-shadow:0 24px 60px #26342d15;
+}
+.username-field{
+  background:#ffffff;
+  border-color:var(--pm-line-strong);
+  box-shadow:inset 0 0 0 1px #ffffff;
+}
+.username-field input{color:var(--text)}
+.username-field input::placeholder{color:#9aa39e}
+.prefix{color:#89938d}
+.search-controls select,
+.client-report-select,
+.workspace-field input,
+.workspace-field select{
+  background:#ffffff;
+  color:var(--text);
+  border-color:var(--pm-line-strong);
+}
+.search-controls .primary-button,
+.primary-button,
+.workspace-primary-button{
+  background:var(--accent);
+  color:#ffffff;
+  box-shadow:0 8px 18px #2c745526;
+}
+.search-controls .primary-button:hover,
+.primary-button:hover,
+.workspace-primary-button:hover{
+  background:var(--accent-strong);
+  color:#ffffff;
+}
+.example-link,.evidence-jump,.workspace-text-link,.workspace-text-button{color:var(--blue)}
+.search-foot{color:var(--subtle)}
+
+.account-inline{
+  background:#edf7f1;
+  border-color:#2c745525;
+  box-shadow:0 10px 30px #26342d0a;
+}
+.account-identity strong,.private-toggle{color:var(--text)}
+.account-identity small{color:var(--muted)}
+.account-actions a,.account-actions button{
+  background:#ffffffa8;
+  color:var(--muted);
+  border-color:var(--pm-line);
+}
+.account-actions a:hover,.account-actions button:hover{color:var(--text);border-color:var(--pm-line-strong)}
+
+/* Product preview */
+.example-preview{border-color:var(--pm-line)}
+.preview-card{
+  background:#ffffff;
+  border-color:var(--pm-line-strong);
+  box-shadow:0 24px 62px #26342d13;
+}
+.preview-card h3{color:var(--text)}
+.preview-card p{color:var(--pm-copy)}
+.preview-card-top,.preview-proof{color:var(--muted)}
+.preview-meta span{background:#f2f5f2;border-color:var(--pm-line);color:var(--muted)}
+.value-strip div{border-color:var(--pm-line)}
+
+/* Loading, success, error, toast */
+.status,.notice{
+  background:#ffffff;
+  color:var(--pm-copy);
+  border-color:var(--pm-line-strong);
+  box-shadow:0 12px 34px #26342d0b;
+}
+.status:not(.error)::before{box-shadow:0 0 0 5px #2c745514}
+.status.error{background:#fff5f4;color:#9f3e3e;border-color:#b24b4b35}
+.pm-toast{
+  background:#fffffff5;
+  color:var(--pm-copy);
+  border-color:var(--pm-line-strong);
+  box-shadow:0 18px 48px #26342d22;
+}
+.pm-toast.error{background:#fff6f5;border-color:#b24b4b3d;color:#a34242}
+
+/* Report — keep editorial hierarchy, remove dark residual surfaces. */
+.report-profile{
+  background:linear-gradient(180deg,#f7f8f5 78%,#f7f8f500);
+}
+.profile-meta h2,.story-card h2,.focus-copy h3,.section-heading h2,.project-card h3,.observation{color:var(--text)}
+.profile-meta p{color:var(--muted)}
+.action-button{
+  background:#eef6f1;
+  color:var(--accent);
+  border-color:#2c74552e;
+}
+.action-button.secondary{
+  background:#ffffff;
+  color:var(--muted);
+  border-color:var(--pm-line-strong);
+}
+.story-summary,.highlight-list li{color:var(--pm-copy)}
+.confidence{background:#f4f6f4}
+.confidence.strong{color:var(--accent);border-color:#2c745538}
+.confidence.moderate{color:#8a6a23;border-color:#8a6a2330}
+.confidence.limited{color:var(--muted)}
+
+.technical-drawer,.evidence-details{
+  background:#ffffff;
+  border-color:var(--pm-line-strong);
+  box-shadow:0 12px 38px #26342d0a;
+}
+.technical-drawer>summary,.evidence-summary{color:var(--text)}
+.technical-panel{
+  background:#f7f9f7;
+  border-color:var(--pm-line);
+}
+.technical-panel h3{color:var(--muted)}
+.signal{color:var(--pm-copy);border-color:var(--pm-line)}
+.repo-row{border-color:var(--pm-line)}
+.repo-row span{color:var(--muted)}
+.bar{background:#dfe6e1}
+.bar span{background:linear-gradient(90deg,var(--blue),var(--accent))}
+.evidence{
+  background:#ffffff;
+  color:var(--text);
+  border-color:var(--pm-line);
+}
+.evidence:hover{border-color:#356eb84d;background:#f8fafc}
+.evidence-title small,.evidence-kind{color:var(--subtle)}
+
+.history-card{border-color:var(--pm-line)}
+.delta-box{
+  background:#f4f8fb;
+  border-color:#356eb828;
+}
+.delta-item,.history-entry{border-color:var(--pm-line)}
+.history-entry{background:#ffffff}
+.history-entry.current{border-color:#2c74553d;background:#f4faf6}
+.track-cta{
+  background:#eef7f1;
+  border-color:#2c74552b;
+}
+.track-cta span{color:var(--muted)}
+
+/* Workspace — journal light, operation surfaces clearly grouped. */
+.workspace-primary-card{border-bottom-color:#2c74553b}
+.workspace-primary-card h2,.workspace-summary-card strong,.workspace-section-head>div,.workspace-list-row strong,.workspace-settings-card strong{color:var(--text)}
+.workspace-list-row span,.workspace-list-row time{color:var(--muted)}
+.workspace-form{
+  background:#ffffff;
+  border-color:var(--pm-line-strong);
+  box-shadow:0 18px 50px #26342d0d;
+}
+.workspace-field{color:var(--muted)}
+.workspace-callout{
+  background:#fff9e8;
+  border-color:#a77a2435;
+  color:#76581c;
+}
+.workspace-soft-note{
+  background:#f5f7f5;
+  border-color:var(--pm-line);
+  color:var(--muted);
+}
+.workspace-secondary-button{
+  background:#ffffff;
+  color:var(--muted);
+  border-color:var(--pm-line-strong);
+}
+.workspace-secondary-button:hover{color:var(--text);border-color:#20312945}
+.workspace-settings{
+  background:#ffffff;
+  border-color:var(--pm-line-strong);
+}
+.workspace-settings>summary{color:var(--muted)}
+.workspace-settings-card{
+  background:#f8f9f7;
+  border-color:var(--pm-line);
+}
+.usage-row{color:var(--muted);border-color:var(--pm-line)}
+.usage-row strong{color:var(--text)}
+.danger-zone{border-color:#b24b4b24;background:#fff9f8}
+
+/* Stakeholder/client report */
+.client-report-card{
+  background:#ffffff;
+  border-color:#356eb82c;
+  box-shadow:0 18px 52px #26342d0d;
+}
+.client-report-section{
+  background:#f8f9f7;
+  border-color:var(--pm-line);
+}
+.client-report-item{border-color:var(--pm-line)}
+.client-report-item strong{color:var(--accent)}
+.client-report-item span{color:var(--pm-copy)}
+.client-report-direction{
+  background:#eef7f1;
+  color:var(--text);
+  border-left-color:var(--accent);
+}
+.client-report-direction p{color:var(--pm-copy)}
+.shared-report-intro{border-color:var(--pm-line)}
+
+footer{border-color:var(--pm-line);color:var(--subtle)}
+
+/* Keep focus distinct on pale surfaces. */
+button:focus-visible,a:focus-visible,input:focus-visible,select:focus-visible,summary:focus-visible{
+  outline-color:#2f67ad!important;
+}
+
+@media(max-width:760px){
+  .report-profile{background:transparent}
+  .search-card,.preview-card,.workspace-form,.client-report-card{box-shadow:0 14px 34px #26342d10}
+}
