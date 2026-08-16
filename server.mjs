@@ -19,8 +19,11 @@ import { buildSnapshot, compareSnapshots } from './src/history.mjs';
 import { getPreviousSnapshotPersistent, getSnapshotByIdPersistent, historyStatsPersistent, listSnapshotsPersistent, saveSnapshotPersistent } from './src/history-store.mjs';
 import { assertRuntimeConfig, runtimeConfig, validateRuntimeConfig } from './src/runtime.mjs';
 import { storageBackend, storageConfig, storageReadiness } from './src/storage.mjs';
+import { consumeEntitlement, quotaError } from './src/entitlements.mjs';
+import { persistWorkspaceAuth } from './src/workspace-connection.mjs';
+import { createSaasRoutes } from './src/saas-routes.mjs';
 
-const PRODUCT_VERSION = '0.8.0';
+const PRODUCT_VERSION = '1.0.0';
 const runtimeValidation = assertRuntimeConfig();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
@@ -262,6 +265,11 @@ async function handleAnalyze(req, res) {
       }
     }
 
+    if (includePrivate && auth?.workspaceId) {
+      const usage = await consumeEntitlement(auth.workspaceId, 'analysis');
+      if (!usage.accepted) throw quotaError('analysis', usage);
+    }
+
     const { dataset, payload } = await withAuth(auth, () => buildAnalysis({ username, locale, days, includePrivate }));
     const history = await buildHistoryContext(dataset, payload, locale);
     const cacheablePayload = { ...payload, history };
@@ -279,6 +287,7 @@ async function handleAnalyze(req, res) {
     if (error instanceof SyntaxError) return sendJson(res, 400, { error: 'Invalid JSON request.' });
     if (error.status === 401) return sendJson(res, 401, { error: error.message });
     if (error.status === 404) return sendJson(res, 404, { error: 'GitHub user not found.' });
+    if (error.code === 'quota_exceeded') return sendJson(res, 429, { error: error.message, code: error.code, metric: error.metric, plan: error.plan, used: error.used, limit: error.limit });
     if (error.status === 403 || error.status === 429) {
       return sendJson(res, error.status === 403 ? 403 : 429, {
         error: error.status === 403 ? error.message : 'GitHub rate limit reached. Connect GitHub or configure a development PAT.',
@@ -311,6 +320,8 @@ async function handleCreateClientReport(req, res) {
   if (snapshot.includePrivate) {
     const auth = await resolveAuth(req);
     assertPrivateAccess(auth, snapshot);
+    const usage = await consumeEntitlement(auth.workspaceId, 'report');
+    if (!usage.accepted) throw quotaError('report', usage);
   }
   if (!snapshot.evidence?.length) {
     return sendJson(res, 409, { error: 'This snapshot predates report-ready evidence storage. Refresh the analysis once, then generate the update again.' });
@@ -434,12 +445,15 @@ async function handleOAuthCallback(req, url, res) {
     const viewer = await fetchGitHubViewer(tokenPayload.access_token);
     const credential = tokenCredential(tokenPayload, viewer);
     const session = await createSession(req, { viewer, credential });
+    await persistWorkspaceAuth({ viewer, credential, workspaceId: credential.workspaceId, mode: 'github-app' }).catch((error) => console.warn(`Workspace connection persistence failed: ${error.message}`));
     return redirect(res, flow.returnTo || '/workspace', { 'Set-Cookie': [session.setCookie, clearOAuthCookie(req)] });
   } catch (error) {
     console.error('GitHub OAuth callback failed:', error);
     return redirect(res, '/?auth_error=oauth_failed', { 'Set-Cookie': clearOAuthCookie(req) });
   }
 }
+
+const handleSaasRoute = createSaasRoutes({ resolveAuth, withAuth, buildAnalysis, buildHistoryContext });
 
 const server = http.createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host || 'localhost'}`);
@@ -451,6 +465,8 @@ const server = http.createServer(async (req, res) => {
     return sendJson(res, 200, { ok: true }, clearCookie ? { 'Set-Cookie': clearCookie } : {});
   }
   if (req.method === 'GET' && url.pathname === '/api/auth/status') return handleAuthStatus(req, res);
+
+  if (await handleSaasRoute(req, res, url)) return;
 
   if (req.method === 'GET' && url.pathname === '/api/health') {
     let auth = null;
@@ -506,6 +522,7 @@ const server = http.createServer(async (req, res) => {
     const reportMatch = url.pathname.match(/^\/api\/client-report\/([0-9a-f-]+)$/i);
     if (req.method === 'GET' && reportMatch) return await handleGetClientReport(req, reportMatch[1], res);
   } catch (error) {
+    if (error.code === 'quota_exceeded') return sendJson(res, 429, { error: error.message, code: error.code, metric: error.metric, plan: error.plan, used: error.used, limit: error.limit });
     return sendJson(res, error.status || 500, { error: error.message || 'Request failed.' });
   }
 

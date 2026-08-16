@@ -7,6 +7,7 @@
   <title>Dev30 — Evidence-backed developer activity</title>
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/client-report.css" />
+  <link rel="stylesheet" href="/workspace.css" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -14,7 +15,7 @@
   <main class="shell">
     <header class="topbar">
       <a class="brand" href="/" aria-label="Dev30 home"><span class="brand-mark">D30</span><span>Dev30</span></a>
-      <div class="top-meta"><span class="beta">product alpha</span><span id="runtime-badge" class="runtime-badge">checking runtime…</span></div>
+      <div class="top-meta"><span class="beta">pilot ready</span><span id="runtime-badge" class="runtime-badge">checking runtime…</span></div>
     </header>
 
     <section class="hero">
@@ -39,7 +40,7 @@
         </div>
         <div class="search-foot">
           <button class="example-link" type="button" data-example="hstptcn5">Try hstptcn5</button>
-          <span>Fresh reports are saved to local snapshot history. Public reports keep a shareable <code>/u/username</code> URL.</span>
+          <span>Fresh reports are saved to persistent snapshot history. Public reports keep a shareable <code>/u/username</code> URL.</span>
         </div>
       </form>
 
@@ -47,7 +48,7 @@
         <div>
           <span class="account-kicker">Connected GitHub</span>
           <strong id="account-name"></strong>
-          <p>Analyze your own account with private repositories included. Private reports, snapshot history, and stakeholder updates stay inside your Dev30 workspace.</p>
+          <p>Analyze your own account with private repositories included. Private reports, snapshot history, schedules, and stakeholder updates stay scoped to your Dev30 workspace.</p>
         </div>
         <button id="account-button" type="button">Analyze my account</button>
       </section>
@@ -55,8 +56,8 @@
 
     <section class="value-strip" aria-label="Dev30 product features">
       <div><strong>Evidence-first</strong><span>Claims link back to PRs and commits.</span></div>
-      <div><strong>User workspace</strong><span>Connect GitHub and keep private history scoped to your account.</span></div>
-      <div><strong>Weekly updates</strong><span>Turn saved activity into client/founder-ready Markdown.</span></div>
+      <div><strong>Comparable history</strong><span>Track project focus and work changes over time.</span></div>
+      <div><strong>Weekly updates</strong><span>Generate and optionally deliver client/founder-ready reports.</span></div>
     </section>
 
     <section id="status" class="status hidden" aria-live="polite"></section>

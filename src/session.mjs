@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { refreshGitHubUserToken, tokenCredential } from './github-oauth.mjs';
 import { remoteCreateSession, remoteDeleteSession, remoteGetSession, remoteSessionStats, remoteStorageEnabled, remoteUpdateSessionCredential } from './storage.mjs';
+import { deleteWorkspaceConnection, disableSchedule } from './saas-store.mjs';
 
 const STORE_VERSION = 1;
 const SESSION_COOKIE = 'dev30_session';
@@ -47,6 +48,14 @@ function unseal(value) {
   decipher.setAuthTag(decode(tagPart));
   const plaintext = Buffer.concat([decipher.update(decode(payloadPart)), decipher.final()]).toString('utf8');
   return JSON.parse(plaintext);
+}
+
+export function encryptCredential(value) {
+  return seal(value);
+}
+
+export function decryptCredential(value) {
+  return unseal(value);
 }
 
 function parseCookies(req) {
@@ -204,8 +213,21 @@ export async function getSession(req, { filePath = null, refresh = true } = {}) 
   return session;
 }
 
-export async function destroySession(req, { filePath = null } = {}) {
+export async function destroySession(req, { filePath = null, disconnectWorkspace = true } = {}) {
   const id = parseCookies(req)[SESSION_COOKIE];
+  let session = null;
+  if (id && disconnectWorkspace) {
+    session = await getSession(req, { filePath, refresh: false }).catch(() => null);
+  }
+
+  if (disconnectWorkspace && session?.workspaceId) {
+    // Disconnect is a privacy action, not just a browser logout. Perform the
+    // durable cleanup first; if it fails, keep the browser session so the user
+    // is not shown as disconnected while background access is still active.
+    await disableSchedule(session.workspaceId);
+    await deleteWorkspaceConnection(session.workspaceId);
+  }
+
   if (id) {
     if (useRemote(filePath)) await remoteDeleteSession(id);
     else {
@@ -215,6 +237,7 @@ export async function destroySession(req, { filePath = null } = {}) {
       await writeStore(store, localPath);
     }
   }
+
   return cookie(SESSION_COOKIE, '', { req, clear: true });
 }
 

@@ -88,8 +88,19 @@ async function bootGitHubWorkspace() {
       const logout = el('button', 'action-button secondary', 'Disconnect');
       logout.type = 'button';
       logout.onclick = async () => {
-        await fetch('/api/auth/logout', { method: 'POST' });
-        location.href = '/';
+        logout.disabled = true;
+        const original = logout.textContent;
+        logout.textContent = 'Disconnecting…';
+        try {
+          const response = await fetch('/api/disconnect', { method: 'POST' });
+          const payload = await response.json().catch(() => ({}));
+          if (!response.ok || payload.disconnected !== true) throw new Error(payload.error || 'GitHub disconnect did not complete.');
+          location.href = '/';
+        } catch (error) {
+          alert(error.message);
+          logout.disabled = false;
+          logout.textContent = original;
+        }
       };
       actions.append(logout);
     }
