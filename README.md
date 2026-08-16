@@ -6,8 +6,10 @@ It is not a contribution counter and it does not score developers. Dev30 collect
 
 - **Explain simply** — plain-language project summaries for non-technical readers.
 - **Technical view** — engineering work mix, repository activity, technologies, trajectory, timeline, and evidence.
-- **Snapshot history** — persistent local snapshots and deterministic comparisons over time.
-- **Client / founder update** — a concise progress report generated from a saved snapshot and its evidence, with Markdown export.
+- **Snapshot history** — persistent snapshots and deterministic comparisons over time.
+- **Client / founder update** — concise progress reports generated from saved snapshots and evidence, with Markdown export.
+- **GitHub workspace** — GitHub App OAuth for multi-user identity plus PAT fallback for local development.
+- **SaaS persistence** — local JSON for development or shared Supabase persistence for hosted multi-user deployments.
 
 Every material report claim is constrained to GitHub evidence IDs that Dev30 actually collected. Snapshot comparisons are computed deterministically before DeepSeek explains the delta.
 
@@ -26,7 +28,7 @@ Evidence ledger
     ↓
 DeepSeek report synthesis
     ↓
-Persistent local snapshot
+Persistent snapshot
     ↓
 Deterministic snapshot delta → DeepSeek delta explanation
     ↓
@@ -35,13 +37,27 @@ Client/founder report writer
 Copyable Markdown + public share route when evidence is public-only
 ```
 
+Connected-account flow:
+
+```text
+GitHub App / PAT fallback
+    ↓
+request-scoped credential
+    ↓
+workspace github:<user-id>
+    ↓
+private repo analysis
+    ↓
+workspace-scoped snapshots + reports
+```
+
 ## Run locally
 
 Requires Node.js 22+.
 
 ```bash
 cp .env.example .env
-# Fill DEEPSEEK_API_KEY and preferably GITHUB_TOKEN
+# Fill DEEPSEEK_API_KEY and preferably GITHUB_TOKEN for local testing
 npm start
 ```
 
@@ -49,40 +65,77 @@ Open `http://localhost:3000`.
 
 The app has no npm runtime dependencies; it uses the Node.js standard library and native `fetch`.
 
+Local development defaults to:
+
+```env
+NODE_ENV=development
+DEV30_STORAGE_BACKEND=local
+```
+
+so existing `data/*.json` persistence continues to work without Supabase or a GitHub App.
+
 ## Product layer
 
 - Public reports support **7 / 30 / 90 day** windows.
 - Public analysis pages receive a shareable route such as `/u/hstptcn5?days=30&lang=vi`.
-- Reports are cached in memory for `CACHE_TTL_MINUTES` (default 360) to avoid unnecessary GitHub and DeepSeek calls.
-- Fresh analyses are persisted as snapshots in `data/history.json`; identical structured analyses are deduplicated.
-- Snapshot series are separated by username, window, language, and public/private mode.
+- Reports are cached in memory for `CACHE_TTL_MINUTES` to avoid unnecessary GitHub and DeepSeek calls.
+- Fresh analyses are persisted as snapshots; identical structured analyses are deduplicated.
+- Snapshot series are separated by username, window, language, public/private mode, and private workspace.
 - When a previous snapshot exists, Dev30 computes new/absent repos, observed commit/PR count changes, work-mix shifts, focus changes, and newly observed work units.
 - DeepSeek receives only that deterministic delta for **What changed since last report?**.
-- Snapshot schema v2 retains a bounded evidence ledger so a later stakeholder report can still link back to GitHub after a restart.
-- The Snapshot & History card offers **Generate weekly update** with `Client update` or `Founder update` audience.
 - Stakeholder reports are generated from a saved snapshot + deterministic delta, not from an unconstrained prompt.
-- Generated reports are stored locally in `data/client-reports.json` and include **Copy Markdown**.
-- A report is shareable at `/r/<report-id>` only when the source snapshot is public and all selected evidence is public. Private reports remain local-only.
-- `Refresh` bypasses the analysis cache and rebuilds a report; it creates a new snapshot only when the structured analysis changed.
-- If `GITHUB_TOKEN` is configured, `/api/me` exposes the connected account identity and the UI offers **Analyze my account**.
-- Private repository analysis is explicit opt-in and only works for the account represented by `GITHUB_TOKEN`.
-- Private history/client reports stay on the local Dev30 instance. `data/` is gitignored.
+- A report is shareable at `/r/<report-id>` only when the source snapshot is public and all selected evidence is public.
+- `Refresh` bypasses the analysis cache and creates a new snapshot only when the structured analysis changed.
+- GitHub App OAuth uses state + PKCE, encrypted server-side sessions, refresh-token rotation, and request-scoped GitHub credentials.
+- PAT mode remains available as a development fallback and can analyze the authenticated account's private repositories.
+- `/workspace` keeps private history and stakeholder reports scoped to the connected GitHub workspace.
 - Private analysis and private stakeholder reports may send selected repository/work metadata to the configured DeepSeek API; they are never silently enabled for ordinary public lookups.
+
+## Persistence modes
+
+### Local JSON
+
+Default development mode:
+
+- sessions: `data/sessions.json`
+- snapshots: `data/history.json`
+- stakeholder reports: `data/client-reports.json`
+
+`data/` is gitignored.
+
+### Supabase
+
+Hosted multi-user mode:
+
+```env
+DEV30_STORAGE_BACKEND=supabase
+SUPABASE_URL=https://your-project.supabase.co
+SUPABASE_SECRET_KEY=sb_secret_...
+```
+
+Apply [`docs/SUPABASE_SCHEMA.sql`](docs/SUPABASE_SCHEMA.sql) first. The secret key is server-only and never sent to the browser.
+
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the production runtime contract.
 
 ## Configuration
 
 | Variable | Required | Default | Purpose |
 | --- | --- | --- | --- |
 | `DEEPSEEK_API_KEY` | For LLM mode | — | DeepSeek credential; server-side only |
-| `DEEPSEEK_MODEL` | No | `deepseek-v4-flash` | Analysis, delta, and stakeholder-report synthesis model |
-| `DEEPSEEK_THINKING` | No | `disabled` | Set `enabled` for the main analysis reasoning mode |
-| `GITHUB_TOKEN` | Recommended | — | Higher API budget; also enables explicit connected-account mode |
+| `DEEPSEEK_MODEL` | No | `deepseek-v4-flash` | Analysis, delta, and stakeholder-report model |
+| `GITHUB_APP_CLIENT_ID` | Hosted OAuth | — | GitHub App user authorization |
+| `GITHUB_APP_CLIENT_SECRET` | Hosted OAuth | — | Server-side GitHub App secret |
+| `GITHUB_APP_SLUG` | Recommended | — | Builds the Choose repositories/install URL |
+| `GITHUB_OAUTH_CALLBACK_URL` | No | derived | Explicit callback override |
+| `GITHUB_TOKEN` | Local fallback | — | Development PAT and connected-account fallback |
+| `DEV30_SESSION_SECRET` | Production | ephemeral locally | Encrypts GitHub session credentials and OAuth state |
+| `APP_BASE_URL` | Production | — | Canonical HTTPS public origin |
+| `TRUST_PROXY` | Behind proxy | `false` | Trust proxy HTTPS forwarding for secure cookies |
+| `DEV30_STORAGE_BACKEND` | No | `local` | `local` or `supabase` |
+| `SUPABASE_URL` | Supabase mode | — | Shared persistence project URL |
+| `SUPABASE_SECRET_KEY` | Supabase mode | — | Current server-only Supabase secret key |
+| `SUPABASE_SERVICE_ROLE_KEY` | Legacy only | — | Legacy server key compatibility |
 | `CACHE_TTL_MINUTES` | No | `360` | In-memory analysis cache lifetime |
-| `DEV30_HISTORY_FILE` | No | `data/history.json` | Persistent local snapshot store |
-| `HISTORY_MAX_PER_SERIES` | No | `24` | Maximum snapshots per username/window/mode/language series |
-| `HISTORY_MAX_TOTAL` | No | `500` | Maximum snapshots across the local store |
-| `DEV30_CLIENT_REPORT_FILE` | No | `data/client-reports.json` | Persistent local stakeholder-report store |
-| `CLIENT_REPORT_MAX_TOTAL` | No | `200` | Maximum generated stakeholder reports retained locally |
 | `MAX_DISCOVERED_REPOS` | No | `15` | Maximum active repositories to scan |
 | `MAX_DEEP_DIVE_REPOS` | No | `5` | Repositories selected for changed-file inspection |
 | `MAX_COMMIT_PAGES` | No | `5` | Commit-list pagination budget per repo |
@@ -91,7 +144,18 @@ The app has no npm runtime dependencies; it uses the Node.js standard library an
 | `MAX_DETAIL_PRS_PER_REPO` | No | `6` | PR-file budget for deep-dive repos |
 | `PORT` | No | `3000` | HTTP port |
 
-Without `DEEPSEEK_API_KEY`, Dev30 returns deterministic analysis, delta, and stakeholder-report fallbacks. Without `GITHUB_TOKEN`, public lookup runs in a tighter **public-lite** collection mode.
+Without `DEEPSEEK_API_KEY`, Dev30 returns deterministic analysis, delta, and stakeholder-report fallbacks. Without a GitHub credential, public lookup runs in a tighter **public-lite** collection mode.
+
+## Production guardrails
+
+With `NODE_ENV=production`, Dev30 refuses to start unless:
+
+- `APP_BASE_URL` is configured;
+- the public origin uses HTTPS;
+- `DEV30_SESSION_SECRET` is persistent;
+- remote persistence is configured.
+
+Controlled pilot escape hatches exist for local persistence or HTTP, but they must be enabled explicitly and are not intended for normal public hosting.
 
 ## API
 
@@ -107,11 +171,11 @@ Without `DEEPSEEK_API_KEY`, Dev30 returns deterministic analysis, delta, and sta
 }
 ```
 
-Supported windows are `7`, `30`, and `90`; unsupported values normalize to `30`. Fresh responses include a `history` object with the current snapshot, previous snapshot, deterministic delta, delta narrative, and recent snapshot summaries.
+Supported windows are `7`, `30`, and `90`; unsupported values normalize to `30`.
 
-`GET /api/history?username=hstptcn5&days=30&locale=vi&includePrivate=false` lists saved snapshots for one series. Private history is only returned for the connected GitHub account.
+`GET /api/history?username=hstptcn5&days=30&locale=vi&includePrivate=false` lists saved snapshots for one series. Private history requires the matching connected workspace.
 
-`POST /api/client-report`
+`POST /api/client-report` creates a stakeholder update from a saved snapshot.
 
 ```json
 {
@@ -120,15 +184,17 @@ Supported windows are `7`, `30`, and `90`; unsupported values normalize to `30`.
 }
 ```
 
-`audience` accepts `client` or `founder`. The response contains the structured report, Markdown, evidence, and a `sharePath` only when the report is public-share-safe.
+`GET /api/client-report/<report-id>` returns one generated report. Private reports require the matching connected workspace.
 
-`GET /api/client-report/<report-id>` returns one generated report. Private/local-only reports require the connected account.
+`GET /api/client-reports?username=hstptcn5&includePrivate=false` lists generated stakeholder reports.
 
-`GET /api/client-reports?username=hstptcn5&includePrivate=false` lists locally generated stakeholder reports for a user/mode.
+`GET /api/auth/status` reports GitHub App/PAT connection state without exposing credentials.
 
-`GET /api/health` reports product/analyzer version, DeepSeek/GitHub configuration, cache stats, local history counts, and client-report counts without exposing secrets.
+`GET /api/workspace` returns the connected account workspace, private access diagnostics, snapshots, and reports.
 
-`GET /api/me` returns the GitHub identity represented by the configured server-side token and private-access diagnostics.
+`GET /api/health` is a process/liveness diagnostic and exposes only non-secret runtime metadata.
+
+`GET /api/ready` is the deployment readiness probe. In Supabase mode it verifies that all persistence tables are reachable and returns HTTP 503 when the instance should not receive traffic.
 
 ## Evidence, reports, and privacy rules
 
@@ -138,8 +204,9 @@ Supported windows are `7`, `30`, and `90`; unsupported values normalize to `30`.
 - Snapshot comparison is deterministic; DeepSeek is not asked to compare two free-form reports.
 - Client/founder reports are built from snapshot/delta/evidence payloads; DeepSeek is not allowed to invent blockers, deadlines, promises, or business impact.
 - Public lookup never enumerates private repositories.
-- Private analysis requires an explicit request and a token whose authenticated login matches the requested username.
-- Private snapshots and generated stakeholder reports are stored locally and intentionally excluded from git by `.gitignore`.
+- Private analysis requires an explicit request and a GitHub credential whose authenticated login matches the requested username.
+- Private snapshots/reports are workspace-scoped.
+- GitHub App access/refresh tokens are encrypted before persistence; browser cookies contain only opaque session state.
 - Public stakeholder sharing is refused if the source snapshot is private or selected evidence is private.
 
 ## Validation
@@ -151,10 +218,9 @@ npm run check
 
 ## Current limitations
 
-- Snapshot and stakeholder-report storage use local JSON files; a production deployment should use transactional persistent storage.
-- Cache is in-memory only; a production deployment should use a shared cache/database.
-- Public share routes are only as reachable as the Dev30 server itself; deploying them as durable SaaS URLs still requires hosted persistence and authentication boundaries.
-- The current connected-account mode uses one server-side token. SaaS multi-user private analysis still requires GitHub OAuth or a GitHub App.
+- The analysis cache remains process-local; a restart can cause a fresh GitHub/DeepSeek analysis, but durable snapshots and reports survive when Supabase storage is enabled.
+- Switching from local JSON to Supabase intentionally does not auto-upload existing private local history.
 - GitHub public events do not provide a complete 90-day history; 90-day reports rely primarily on repository, commit, and PR queries for the older part of the window.
 - Collection remains intentionally bounded and is not an audit/billing ledger.
 - Changed-file metadata is sampled under a configurable request budget.
+- Hosted billing, quotas, scheduled weekly runs, email delivery, and organization/team workspaces are not implemented yet.

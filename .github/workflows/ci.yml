@@ -17,3 +17,4 @@ jobs:
           node-version: 22
       - run: npm test
       - run: npm run check
+      - run: docker build -t dev30-ci .

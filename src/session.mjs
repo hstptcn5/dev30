@@ -1,7 +1,9 @@
+import './env.mjs';
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { refreshGitHubUserToken, tokenCredential } from './github-oauth.mjs';
+import { remoteCreateSession, remoteDeleteSession, remoteGetSession, remoteSessionStats, remoteStorageEnabled, remoteUpdateSessionCredential } from './storage.mjs';
 
 const STORE_VERSION = 1;
 const SESSION_COOKIE = 'dev30_session';
@@ -16,6 +18,10 @@ if (!process.env.DEV30_SESSION_SECRET) {
 
 function sessionFilePath() {
   return process.env.DEV30_SESSION_FILE || path.join(process.cwd(), 'data', 'sessions.json');
+}
+
+function useRemote(filePath) {
+  return !filePath && remoteStorageEnabled();
 }
 
 function encode(value) {
@@ -57,8 +63,12 @@ function parseCookies(req) {
 
 function secureCookie(req) {
   if (process.env.COOKIE_SECURE === 'true') return true;
-  const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
-  return forwarded === 'https';
+  if (String(process.env.APP_BASE_URL || '').trim().startsWith('https://')) return true;
+  if (process.env.TRUST_PROXY === 'true') {
+    const forwarded = String(req.headers['x-forwarded-proto'] || '').split(',')[0].trim();
+    return forwarded === 'https';
+  }
+  return false;
 }
 
 function cookie(name, value, { req, maxAge, clear = false } = {}) {
@@ -114,8 +124,7 @@ export function clearOAuthCookie(req) {
   return cookie(OAUTH_COOKIE, '', { req, clear: true });
 }
 
-export async function createSession(req, { viewer, credential }, { filePath = sessionFilePath() } = {}) {
-  const store = await readStore(filePath);
+export async function createSession(req, { viewer, credential }, { filePath = null } = {}) {
   const id = randomBytes(32).toString('base64url');
   const now = new Date().toISOString();
   const entry = {
@@ -126,9 +135,17 @@ export async function createSession(req, { viewer, credential }, { filePath = se
     updatedAt: now,
     encryptedCredential: seal(credential),
   };
-  store.sessions = [entry, ...store.sessions.filter((item) => item.workspaceId !== entry.workspaceId)]
-    .slice(0, Math.max(10, Number(process.env.DEV30_MAX_SESSIONS || DEFAULT_MAX_SESSIONS)));
-  await writeStore(store, filePath);
+
+  if (useRemote(filePath)) {
+    await remoteCreateSession(entry);
+  } else {
+    const localPath = filePath || sessionFilePath();
+    const store = await readStore(localPath);
+    store.sessions = [entry, ...store.sessions.filter((item) => item.workspaceId !== entry.workspaceId)]
+      .slice(0, Math.max(10, Number(process.env.DEV30_MAX_SESSIONS || DEFAULT_MAX_SESSIONS)));
+    await writeStore(store, localPath);
+  }
+
   return {
     id,
     workspaceId: entry.workspaceId,
@@ -138,13 +155,20 @@ export async function createSession(req, { viewer, credential }, { filePath = se
   };
 }
 
-async function persistCredential(id, credential, filePath = sessionFilePath()) {
-  const store = await readStore(filePath);
+async function persistCredential(id, credential, filePath = null) {
+  const encryptedCredential = seal(credential);
+  const updatedAt = new Date().toISOString();
+  if (useRemote(filePath)) {
+    await remoteUpdateSessionCredential(id, encryptedCredential, updatedAt);
+    return;
+  }
+  const localPath = filePath || sessionFilePath();
+  const store = await readStore(localPath);
   const entry = store.sessions.find((item) => item.id === id);
   if (!entry) return;
-  entry.encryptedCredential = seal(credential);
-  entry.updatedAt = new Date().toISOString();
-  await writeStore(store, filePath);
+  entry.encryptedCredential = encryptedCredential;
+  entry.updatedAt = updatedAt;
+  await writeStore(store, localPath);
 }
 
 async function maybeRefresh(session, filePath) {
@@ -159,11 +183,15 @@ async function maybeRefresh(session, filePath) {
   return { ...session, credential: next };
 }
 
-export async function getSession(req, { filePath = sessionFilePath(), refresh = true } = {}) {
+export async function getSession(req, { filePath = null, refresh = true } = {}) {
   const id = parseCookies(req)[SESSION_COOKIE];
   if (!id) return null;
-  const store = await readStore(filePath);
-  const entry = store.sessions.find((item) => item.id === id);
+  let entry;
+  if (useRemote(filePath)) entry = await remoteGetSession(id);
+  else {
+    const store = await readStore(filePath || sessionFilePath());
+    entry = store.sessions.find((item) => item.id === id) || null;
+  }
   if (!entry) return null;
   let credential;
   try {
@@ -176,21 +204,37 @@ export async function getSession(req, { filePath = sessionFilePath(), refresh = 
   return session;
 }
 
-export async function destroySession(req, { filePath = sessionFilePath() } = {}) {
+export async function destroySession(req, { filePath = null } = {}) {
   const id = parseCookies(req)[SESSION_COOKIE];
   if (id) {
-    const store = await readStore(filePath);
-    store.sessions = store.sessions.filter((item) => item.id !== id);
-    await writeStore(store, filePath);
+    if (useRemote(filePath)) await remoteDeleteSession(id);
+    else {
+      const localPath = filePath || sessionFilePath();
+      const store = await readStore(localPath);
+      store.sessions = store.sessions.filter((item) => item.id !== id);
+      await writeStore(store, localPath);
+    }
   }
   return cookie(SESSION_COOKIE, '', { req, clear: true });
 }
 
-export async function sessionStats({ filePath = sessionFilePath() } = {}) {
-  const store = await readStore(filePath);
+export async function sessionStats({ filePath = null } = {}) {
+  if (useRemote(filePath)) {
+    const stats = await remoteSessionStats();
+    return {
+      ...stats,
+      persistentSecretConfigured: Boolean(process.env.DEV30_SESSION_SECRET),
+      persistence: 'supabase',
+      filePath: null,
+    };
+  }
+  const localPath = filePath || sessionFilePath();
+  const store = await readStore(localPath);
   return {
     sessions: store.sessions.length,
+    workspaces: new Set(store.sessions.map((item) => item.workspaceId).filter(Boolean)).size,
     persistentSecretConfigured: Boolean(process.env.DEV30_SESSION_SECRET),
-    filePath: path.relative(process.cwd(), filePath) || filePath,
+    persistence: 'local-json',
+    filePath: path.relative(process.cwd(), localPath) || localPath,
   };
 }
