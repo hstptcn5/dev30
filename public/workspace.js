@@ -87,8 +87,9 @@ function renderScheduleCard(settings, rerender) {
   const hour = E('select'); for (let h = 0; h < 24; h += 1) hour.append(option(h, `${String(h).padStart(2, '0')}:00`, Number(schedule?.hourLocal ?? 8) === h));
   const audience = E('select'); audience.append(option('client', 'Client update', (schedule?.audience || 'client') === 'client'), option('founder', 'Founder update', schedule?.audience === 'founder'));
   const days = E('select'); [7,30,90].forEach((value) => days.append(option(value, `${value} day evidence window`, Number(schedule?.days || 7) === value)));
+  const locale = E('select'); locale.append(option('en', 'English', (schedule?.locale || 'en') === 'en'), option('vi', 'Tiếng Việt', schedule?.locale === 'vi'));
   const timezone = E('input'); timezone.required = true; timezone.value = schedule?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-  form.append(field('Delivery email', email), field('Day', day), field('Local hour', hour), field('Audience', audience), field('Evidence window', days), field('Timezone', timezone));
+  form.append(field('Delivery email', email), field('Day', day), field('Local hour', hour), field('Audience', audience), field('Evidence window', days), field('Report language', locale), field('Timezone', timezone));
 
   const actions = E('div', 'profile-actions workspace-form-actions');
   const save = E('button', 'action-button', schedule?.enabled ? 'Update weekly report' : 'Enable weekly report'); save.type = 'submit';
@@ -112,6 +113,7 @@ function renderScheduleCard(settings, rerender) {
         hourLocal: Number(hour.value),
         audience: audience.value,
         days: Number(days.value),
+        locale: locale.value,
         timezone: timezone.value,
         enabled: true,
       });
@@ -128,6 +130,7 @@ function renderScheduleCard(settings, rerender) {
     status.append(
       E('span', '', schedule.enabled ? 'Enabled' : 'Disabled'),
       E('span', 'muted', `Next: ${formatDate(schedule.nextRunAt)}`),
+      E('span', 'muted', `${schedule.locale === 'vi' ? 'Tiếng Việt' : 'English'} · ${schedule.days || 7} day window`),
       E('span', 'muted', schedule.lastRunAt ? `Last: ${formatDate(schedule.lastRunAt)} · ${schedule.lastStatus || 'unknown'}` : 'No scheduled run yet'),
     );
     if (schedule.lastError) status.append(E('span', 'status error', schedule.lastError));
