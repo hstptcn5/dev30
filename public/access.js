@@ -32,7 +32,7 @@ async function bootGitHubWorkspace() {
     if (!me.connected || !me.viewer) return;
 
     const details = accountName.parentElement;
-    details.querySelectorAll('.workspace-auth-note,.workspace-actions').forEach((node) => node.remove());
+    details.querySelectorAll('.workspace-auth-note,.workspace-actions,.workspace-oauth-note').forEach((node) => node.remove());
     const note = el('small', 'muted workspace-auth-note');
     note.style.display = 'block';
     note.style.marginTop = '6px';
@@ -62,6 +62,19 @@ async function bootGitHubWorkspace() {
     const workspace = el('a', 'action-button secondary', 'Open workspace');
     workspace.href = '/workspace';
     actions.append(workspace);
+
+    if (me.authMode === 'pat') {
+      if (status.githubAppConfigured) {
+        const upgrade = el('a', 'action-button', 'Connect GitHub App');
+        upgrade.href = '/auth/github?returnTo=/workspace';
+        actions.append(upgrade);
+      } else {
+        const oauthNote = el('small', 'muted workspace-oauth-note', 'GitHub App OAuth is not configured yet. PAT fallback remains active.');
+        oauthNote.style.display = 'block';
+        oauthNote.style.marginTop = '8px';
+        details.append(oauthNote);
+      }
+    }
 
     if (me.authMode === 'github-app' && me.installUrl && !me.access?.readyForPrivateAnalysis) {
       const install = el('a', 'action-button', 'Choose repositories');
