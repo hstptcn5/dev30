@@ -60,8 +60,6 @@ function supabaseHeaders(secret) {
     apikey: secret,
     'User-Agent': 'dev30/1.0-storage',
   };
-  // Current sb_secret_* keys are opaque API keys and must not be treated as JWTs.
-  // Legacy service_role keys are JWTs and still support Authorization: Bearer.
   if (!secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${secret}`;
   return headers;
 }
@@ -120,10 +118,7 @@ function snapshotSeriesKey({ workspaceId, username, days, includePrivate, locale
 }
 
 export async function remoteCreateSession(entry) {
-  await request(TABLES.sessions, {
-    method: 'DELETE',
-    params: { workspace_id: filter(entry.workspaceId) },
-  });
+  await request(TABLES.sessions, { method: 'DELETE', params: { workspace_id: filter(entry.workspaceId) } });
   await request(TABLES.sessions, {
     method: 'POST',
     body: {
@@ -140,9 +135,7 @@ export async function remoteCreateSession(entry) {
 }
 
 export async function remoteGetSession(id) {
-  const rows = await request(TABLES.sessions, {
-    params: { select: '*', id: filter(id), limit: '1' },
-  });
+  const rows = await request(TABLES.sessions, { params: { select: '*', id: filter(id), limit: '1' } });
   const row = rows?.[0];
   if (!row) return null;
   return {
@@ -347,6 +340,7 @@ function scheduleFromRow(row) {
     hourLocal: row.hour_local,
     audience: row.audience,
     days: row.days,
+    locale: row.locale === 'vi' ? 'vi' : 'en',
     enabled: row.enabled,
     nextRunAt: row.next_run_at,
     leaseUntil: row.lease_until,
@@ -370,6 +364,7 @@ function scheduleRow(input) {
     hour_local: input.hourLocal,
     audience: input.audience,
     days: input.days,
+    locale: input.locale === 'vi' ? 'vi' : 'en',
     enabled: input.enabled !== false,
     next_run_at: input.nextRunAt,
     lease_until: input.leaseUntil || null,
