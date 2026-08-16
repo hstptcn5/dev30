@@ -15,6 +15,7 @@ test('home loads the Pro Max UX layer after existing styles and scripts', async 
 
 test('Pro Max CSS preserves the reader-first hierarchy and responsive states', async () => {
   const css = await read('public/pro-max.css');
+  const overrides = await read('public/ux-overrides.css');
   assert.match(css, /\.report-story/);
   assert.match(css, /\.story-card\{/);
   assert.match(css, /\.technical-drawer/);
@@ -25,14 +26,18 @@ test('Pro Max CSS preserves the reader-first hierarchy and responsive states', a
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /overflow-wrap:anywhere/);
   assert.match(css, /focus-visible/);
+  assert.match(overrides, /\.hero\.report-mode\{display:block!important/);
+  assert.match(overrides, /private-privacy-note/);
   assert.doesNotMatch(css, /#[a-f0-9]{3,8}[^\n]*(purple|magenta)/i);
 });
 
-test('recoverable UI failures are non-blocking while destructive confirmation remains untouched', async () => {
+test('recoverable failures are non-blocking and private consent is explicit once', async () => {
   const proMax = await read('public/pro-max.js');
   const workspace = await read('public/workspace.js');
   assert.match(proMax, /window\.alert = \(message\) => toast\(message, 'error'\)/);
   assert.match(proMax, /aria-live/);
+  assert.match(proMax, /Selected work metadata may be stored in this workspace/);
+  assert.match(proMax, /sessionStorage\.setItem\('dev30-private-warning-accepted', '1'\)/);
   assert.match(workspace, /confirm\('Disconnect GitHub and stop scheduled work for this workspace\?'\)/);
 });
 
