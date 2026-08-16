@@ -12,16 +12,23 @@ import { clearOAuthCookie, createSession, destroySession, getSession, makeOAuthC
 import { ANALYZER_VERSION, deterministicFallback, isValidGitHubUsername } from './src/analyzer.mjs';
 import { synthesizeDeltaWithDeepSeek, synthesizeWithDeepSeek } from './src/deepseek.mjs';
 import { synthesizeClientReportWithDeepSeek } from './src/client-report-deepseek.mjs';
-import { buildClientReportInput, clientReportStats, clientReportToMarkdown, getClientReport, listClientReports, saveClientReport } from './src/client-report.mjs';
+import { buildClientReportInput, clientReportToMarkdown } from './src/client-report.mjs';
+import { clientReportStatsPersistent, getClientReportPersistent, listClientReportsPersistent, saveClientReportPersistent } from './src/client-report-store.mjs';
 import { cacheStats, getCachedReport, reportCacheKey, setCachedReport } from './src/cache.mjs';
-import { buildSnapshot, compareSnapshots, getPreviousSnapshot, getSnapshotById, historyStats, listSnapshots, saveSnapshot } from './src/history.mjs';
+import { buildSnapshot, compareSnapshots } from './src/history.mjs';
+import { getPreviousSnapshotPersistent, getSnapshotByIdPersistent, historyStatsPersistent, listSnapshotsPersistent, saveSnapshotPersistent } from './src/history-store.mjs';
+import { assertRuntimeConfig, runtimeConfig, validateRuntimeConfig } from './src/runtime.mjs';
+import { storageBackend, storageConfig, storageReadiness } from './src/storage.mjs';
 
-const PRODUCT_VERSION = '0.7.0';
+const PRODUCT_VERSION = '0.8.0';
+const runtimeValidation = assertRuntimeConfig();
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const publicDir = path.join(__dirname, 'public');
 const port = Number(process.env.PORT || 3000);
 const jsonHeaders = { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' };
 let patAuthPromise = null;
+
+for (const warning of runtimeValidation.warnings) console.warn(`Dev30 config warning: ${warning}`);
 
 function sendJson(res, status, body, headers = {}) {
   res.writeHead(status, { ...jsonHeaders, ...headers });
@@ -163,11 +170,11 @@ async function buildAnalysis({ username, locale, days, includePrivate }) {
 async function buildHistoryContext(dataset, payload, locale) {
   try {
     const proposed = buildSnapshot({ dataset, payload, locale });
-    const saved = await saveSnapshot(proposed);
+    const saved = await saveSnapshotPersistent(proposed);
     const current = saved.snapshot;
     const delta = compareSnapshots(saved.previous, current);
     const narrative = delta ? await synthesizeDeltaWithDeepSeek(delta, { locale, days: dataset.window.days }) : null;
-    const entries = await listSnapshots({
+    const entries = await listSnapshotsPersistent({
       username: dataset.profile.login,
       days: dataset.window.days,
       includePrivate: dataset.collector.includePrivate,
@@ -185,7 +192,7 @@ async function buildHistoryContext(dataset, payload, locale) {
       entries,
       delta,
       narrative,
-      persistence: 'local-json',
+      persistence: storageBackend() === 'supabase' ? 'supabase' : 'local-json',
     };
   } catch (error) {
     console.error('Snapshot history failed:', error);
@@ -291,7 +298,7 @@ async function handleHistory(req, url, res) {
   if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
   const auth = includePrivate ? await resolveAuth(req) : null;
   if (includePrivate) assertPrivateAccess(auth, username);
-  const entries = await listSnapshots({ username, days, includePrivate, locale, workspaceId: includePrivate ? auth.workspaceId : null, limit: 24 });
+  const entries = await listSnapshotsPersistent({ username, days, includePrivate, locale, workspaceId: includePrivate ? auth.workspaceId : null, limit: 24 });
   return sendJson(res, 200, { username, days, includePrivate, locale, workspaceId: includePrivate ? auth.workspaceId : 'public', entries });
 }
 
@@ -299,7 +306,7 @@ async function handleCreateClientReport(req, res) {
   const body = await readJson(req);
   const snapshotId = String(body.snapshotId || '').trim();
   const audience = body.audience === 'founder' ? 'founder' : 'client';
-  const snapshot = await getSnapshotById(snapshotId);
+  const snapshot = await getSnapshotByIdPersistent(snapshotId);
   if (!snapshot) return sendJson(res, 404, { error: 'Snapshot not found. Analyze the account first to create one.' });
   if (snapshot.includePrivate) {
     const auth = await resolveAuth(req);
@@ -309,12 +316,12 @@ async function handleCreateClientReport(req, res) {
     return sendJson(res, 409, { error: 'This snapshot predates report-ready evidence storage. Refresh the analysis once, then generate the update again.' });
   }
 
-  const previous = await getPreviousSnapshot(snapshot);
+  const previous = await getPreviousSnapshotPersistent(snapshot);
   const delta = compareSnapshots(previous, snapshot);
   const input = buildClientReportInput({ snapshot, previous, delta, audience, locale: snapshot.locale });
   const report = await synthesizeClientReportWithDeepSeek(input);
   const markdown = clientReportToMarkdown(report, input);
-  const saved = await saveClientReport({ snapshot, input, report, markdown });
+  const saved = await saveClientReportPersistent({ snapshot, input, report, markdown });
   return sendJson(res, 200, {
     id: saved.id,
     createdAt: saved.createdAt,
@@ -333,11 +340,11 @@ async function handleCreateClientReport(req, res) {
 }
 
 async function handleGetClientReport(req, id, res) {
-  const saved = await getClientReport(id);
+  const saved = await getClientReportPersistent(id);
   if (!saved) return sendJson(res, 404, { error: 'Client report not found.' });
   if (saved.includePrivate || !saved.shareable) {
     const auth = await resolveAuth(req);
-    assertPrivateAccess(auth, saved.username);
+    assertPrivateAccess(auth, saved);
   }
   return sendJson(res, 200, {
     id: saved.id,
@@ -360,12 +367,13 @@ async function handleListClientReports(req, url, res) {
   const username = String(url.searchParams.get('username') || '').trim();
   const includePrivate = url.searchParams.get('includePrivate') === 'true';
   if (!isValidGitHubUsername(username)) return sendJson(res, 400, { error: 'Enter a valid GitHub username.' });
+  let auth = null;
   if (includePrivate) {
-    const auth = await resolveAuth(req);
+    auth = await resolveAuth(req);
     assertPrivateAccess(auth, username);
   }
-  const reports = await listClientReports({ username, includePrivate, limit: 30 });
-  return sendJson(res, 200, { username, includePrivate, reports });
+  const reports = await listClientReportsPersistent({ username, includePrivate, workspaceId: includePrivate ? auth.workspaceId : null, limit: 30 });
+  return sendJson(res, 200, { username, includePrivate, workspaceId: includePrivate ? auth.workspaceId : 'public', reports });
 }
 
 async function handleAuthStatus(req, res) {
@@ -389,8 +397,8 @@ async function handleWorkspace(req, url, res) {
   const locale = url.searchParams.get('locale') === 'vi' ? 'vi' : 'en';
   const [access, snapshots, reports] = await withAuth(auth, async () => Promise.all([
     getPrivateAccessDiagnostics(),
-    listSnapshots({ username: auth.viewer.login, days, includePrivate: true, workspaceId: auth.workspaceId, locale, limit: 12 }),
-    listClientReports({ username: auth.viewer.login, includePrivate: true, limit: 12 }),
+    listSnapshotsPersistent({ username: auth.viewer.login, days, includePrivate: true, workspaceId: auth.workspaceId, locale, limit: 12 }),
+    listClientReportsPersistent({ username: auth.viewer.login, includePrivate: true, workspaceId: auth.workspaceId, limit: 12 }),
   ]));
   return sendJson(res, 200, {
     workspaceId: auth.workspaceId,
@@ -401,6 +409,7 @@ async function handleWorkspace(req, url, res) {
     locale,
     snapshots,
     reports,
+    persistence: storageBackend(),
   });
 }
 
@@ -455,10 +464,26 @@ const server = http.createServer(async (req, res) => {
       githubAppConfigured: githubAppConfigured(),
       authMode: auth?.mode || null,
       workspaceId: auth?.workspaceId || null,
+      runtime: runtimeConfig(),
+      storage: storageConfig(),
       cache: cacheStats(),
-      history: await historyStats().catch(() => ({ snapshots: 0, privateSnapshots: 0, workspaces: 0, filePath: null })),
-      clientReports: await clientReportStats().catch(() => ({ reports: 0, privateReports: 0, shareableReports: 0, filePath: null })),
-      sessions: await sessionStats().catch(() => ({ sessions: 0, persistentSecretConfigured: false, filePath: null })),
+      history: await historyStatsPersistent().catch(() => ({ snapshots: 0, privateSnapshots: 0, workspaces: 0, persistence: storageBackend(), filePath: null })),
+      clientReports: await clientReportStatsPersistent().catch(() => ({ reports: 0, privateReports: 0, shareableReports: 0, persistence: storageBackend(), filePath: null })),
+      sessions: await sessionStats().catch(() => ({ sessions: 0, persistentSecretConfigured: false, persistence: storageBackend(), filePath: null })),
+    });
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/ready') {
+    const validation = validateRuntimeConfig();
+    const persistence = await storageReadiness().catch((error) => ({ backend: storageBackend(), ready: false, error: error.message }));
+    const ready = validation.ok && persistence.ready;
+    return sendJson(res, ready ? 200 : 503, {
+      ok: ready,
+      productVersion: PRODUCT_VERSION,
+      runtime: { environment: validation.config.environment, baseUrl: validation.config.baseUrl },
+      storage: persistence,
+      configErrors: validation.errors,
+      configWarnings: validation.warnings,
     });
   }
 
@@ -498,4 +523,8 @@ const server = http.createServer(async (req, res) => {
   sendJson(res, 404, { error: 'Not found.' });
 });
 
-server.listen(port, () => console.log(`Dev30 ${PRODUCT_VERSION} / analyzer ${ANALYZER_VERSION} running at http://localhost:${port}`));
+server.listen(port, () => {
+  const configuredBase = runtimeConfig().baseUrl;
+  const displayUrl = configuredBase || `http://localhost:${port}`;
+  console.log(`Dev30 ${PRODUCT_VERSION} / analyzer ${ANALYZER_VERSION} running at ${displayUrl} · storage=${storageBackend()}`);
+});
