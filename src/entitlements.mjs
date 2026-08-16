@@ -1,18 +1,19 @@
 import './env.mjs';
-import { consumeUsage, getBilling, getUsage } from './saas-store.mjs';
+import { consumeUsage, getUsage } from './saas-store.mjs';
+import { revenueCatConfig, revenueCatPlan } from './revenuecat.mjs';
 
 export const PLAN_LIMITS = Object.freeze({
   free: Object.freeze({
-    analysis: 60,
-    report: 12,
-    scheduled_run: 4,
-    email_delivery: 4,
+    analysis: 5,
+    report: 0,
+    scheduled_run: 0,
+    email_delivery: 0,
   }),
   pro: Object.freeze({
-    analysis: 1500,
-    report: 200,
-    scheduled_run: 100,
-    email_delivery: 100,
+    analysis: 100,
+    report: 50,
+    scheduled_run: 8,
+    email_delivery: 8,
   }),
 });
 
@@ -23,28 +24,47 @@ export function periodStartFor(date = new Date()) {
   return `${value.getUTCFullYear()}-${String(value.getUTCMonth() + 1).padStart(2, '0')}-01`;
 }
 
-export function effectivePlan(billing, env = process.env) {
+function forcedPlan(env = process.env) {
   const forced = String(env.DEV30_FORCE_PLAN || '').trim().toLowerCase();
-  if (forced === 'pro' || forced === 'free') return forced;
+  return forced === 'pro' || forced === 'free' ? forced : null;
+}
+
+// Kept as a compatibility helper for older tests/data. Runtime entitlement resolution
+// no longer trusts locally persisted Stripe billing state.
+export function effectivePlan(billing, env = process.env) {
+  const forced = forcedPlan(env);
+  if (forced) return forced;
   if (billing?.plan === 'pro' && ACTIVE_SUBSCRIPTION_STATUSES.has(String(billing.status || '').toLowerCase())) return 'pro';
   return 'free';
+}
+
+export async function effectivePlanForWorkspace(workspaceId, env = process.env) {
+  const forced = forcedPlan(env);
+  if (forced) return { plan: forced, source: 'forced' };
+  const resolved = await revenueCatPlan(workspaceId, env);
+  return { plan: resolved.plan === 'pro' ? 'pro' : 'free', source: resolved.source || 'revenuecat' };
 }
 
 export function limitsForPlan(plan) {
   return PLAN_LIMITS[plan] || PLAN_LIMITS.free;
 }
 
-export async function entitlementSnapshot(workspaceId, { now = new Date() } = {}) {
+export async function entitlementSnapshot(workspaceId, { now = new Date(), env = process.env } = {}) {
   const periodStart = periodStartFor(now);
-  const billing = await getBilling(workspaceId);
-  const plan = effectivePlan(billing);
+  const resolved = await effectivePlanForWorkspace(workspaceId, env);
+  const plan = resolved.plan;
   const limits = limitsForPlan(plan);
   const usage = await getUsage(workspaceId, periodStart);
   const counters = usage?.counters || {};
   const remaining = Object.fromEntries(Object.entries(limits).map(([metric, limit]) => [metric, Math.max(0, limit - Number(counters[metric] || 0))]));
   return {
     plan,
-    billing: billing || { workspaceId, plan: 'free', status: 'none' },
+    billing: {
+      provider: 'revenuecat',
+      billingEngine: 'paddle',
+      source: resolved.source,
+      entitlementId: revenueCatConfig(env).entitlementId,
+    },
     periodStart,
     limits,
     usage: counters,
@@ -52,8 +72,8 @@ export async function entitlementSnapshot(workspaceId, { now = new Date() } = {}
   };
 }
 
-export async function consumeEntitlement(workspaceId, metric, { now = new Date(), amount = 1 } = {}) {
-  const snapshot = await entitlementSnapshot(workspaceId, { now });
+export async function consumeEntitlement(workspaceId, metric, { now = new Date(), amount = 1, env = process.env } = {}) {
+  const snapshot = await entitlementSnapshot(workspaceId, { now, env });
   const limit = Number(snapshot.limits[metric]);
   if (!Number.isFinite(limit)) throw new Error(`Unknown entitlement metric: ${metric}`);
   const result = await consumeUsage({
@@ -80,5 +100,12 @@ export function quotaError(metric, result) {
   error.plan = result.plan;
   error.used = result.used;
   error.limit = result.limit;
+  return error;
+}
+
+export function proRequiredError(feature = 'This feature') {
+  const error = new Error(`${feature} requires Dev30 Pro.`);
+  error.status = 402;
+  error.code = 'pro_required';
   return error;
 }
