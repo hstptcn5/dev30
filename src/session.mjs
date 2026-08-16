@@ -49,6 +49,14 @@ function unseal(value) {
   return JSON.parse(plaintext);
 }
 
+export function encryptCredential(value) {
+  return seal(value);
+}
+
+export function decryptCredential(value) {
+  return unseal(value);
+}
+
 function parseCookies(req) {
   const result = {};
   for (const part of String(req.headers.cookie || '').split(';')) {
