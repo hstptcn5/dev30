@@ -1,14 +1,10 @@
-# Dev30 1.0 hosted runbook
+# Dev30 1.1 hosted runbook
 
-Dev30 1.0 keeps the zero-config local workflow, but also contains the persistence, identity, scheduling, delivery, quota, and billing boundaries needed for a hosted pilot.
+Dev30 1.1 keeps the local-first development workflow while adding a cost-bounded hosted SaaS boundary. Follow this runbook in order. Do not enable billing or email before identity, storage, and fresh-analysis metering are healthy.
 
-This document is deliberately ordered as an operations checklist. Do not enable billing or email before the core hosted workspace is healthy.
+## 1. Local development
 
-## 1. Pick the runtime mode
-
-### Local / personal development
-
-No hosted services are required:
+No hosted billing service is required:
 
 ```env
 NODE_ENV=development
@@ -16,9 +12,15 @@ DEV30_STORAGE_BACKEND=local
 GITHUB_TOKEN=github_pat_...
 ```
 
-This preserves the workflow used during development. Snapshot history, reports, SaaS pilot state, and optional sessions stay under `data/` and are gitignored.
+When RevenueCat is not configured in development, local workspaces receive Pro-equivalent feature access so private analysis, stakeholder reports, and schedule testing remain available. To exercise the hosted Free experience locally:
 
-### Hosted multi-user pilot
+```env
+DEV30_FORCE_PLAN=free
+```
+
+Use `DEV30_FORCE_PLAN=pro` only as an explicit development/pilot override, never as production billing state.
+
+## 2. Hosted multi-user baseline
 
 Use shared persistence and GitHub App OAuth:
 
@@ -32,21 +34,21 @@ DEV30_SESSION_SECRET=<long-random-secret>
 TRUST_PROXY=true
 ```
 
-Do **not** carry a developer PAT into a normal multi-user deployment. Production refuses `GITHUB_TOKEN` by default because one server PAT would otherwise become a shared identity for every visitor.
+Do **not** carry a developer PAT into a normal multi-user deployment. Production rejects `GITHUB_TOKEN` by default because one server PAT must not become the identity for every visitor.
 
-A controlled single-user pilot can explicitly opt into the escape hatch:
+A controlled single-user pilot can opt into:
 
 ```env
 ALLOW_PAT_IN_PRODUCTION=true
 ```
 
-Remove it before inviting other users.
+Remove that escape hatch before inviting other users.
 
-## 2. Create shared persistence
+## 3. Shared persistence
 
-Apply [`SUPABASE_SCHEMA.sql`](./SUPABASE_SCHEMA.sql) in the Supabase SQL editor.
+Apply [`SUPABASE_SCHEMA.sql`](./SUPABASE_SCHEMA.sql) in the target Supabase project.
 
-The schema creates server-only tables for:
+The schema covers:
 
 - browser sessions;
 - durable encrypted GitHub workspace connections;
@@ -54,67 +56,51 @@ The schema creates server-only tables for:
 - stakeholder reports;
 - weekly schedules and leases;
 - monthly usage counters;
-- billing state and processed webhook IDs;
+- legacy billing/event state retained for compatibility;
 - email delivery receipts.
 
-It also creates two server RPCs:
+The current runtime subscription source of truth is RevenueCat, not the legacy billing table.
 
-- `dev30_claim_due_schedules` — claims due jobs with `FOR UPDATE SKIP LOCKED` and a lease, preventing concurrent cron workers from running the same schedule at once;
-- `dev30_consume_usage` — atomically checks and increments a workspace quota.
+Server RPCs include:
 
-Anon/authenticated database roles are explicitly denied access. The Dev30 server accesses these tables using the server secret only.
+- `dev30_claim_due_schedules` — lease due jobs using `FOR UPDATE SKIP LOCKED`;
+- `dev30_consume_usage` — atomically check and increment workspace quota.
 
-### Server key
-
-Prefer the current server secret:
+Prefer:
 
 ```env
 SUPABASE_SECRET_KEY=sb_secret_...
 ```
 
-Legacy projects may still use:
+Legacy projects may use `SUPABASE_SERVICE_ROLE_KEY`. Neither key may be exposed to browser JavaScript.
 
-```env
-SUPABASE_SERVICE_ROLE_KEY=...
-```
+## 4. Explicit local-history migration
 
-Never expose either value to browser JavaScript or a public build argument.
-
-## 3. Migrate existing local history explicitly
-
-Switch the environment to the target Supabase project, then run a dry run:
+Dry run:
 
 ```bash
 DEV30_STORAGE_BACKEND=supabase node scripts/migrate-local-to-supabase.mjs
 ```
 
-It prints local snapshot/report counts and performs no writes.
-
-After reviewing the target project and counts:
+Apply only after checking the target project and counts:
 
 ```bash
 DEV30_STORAGE_BACKEND=supabase node scripts/migrate-local-to-supabase.mjs --apply
 ```
 
-The migration:
+The migration copies snapshot/report artifacts only, preserves workspace boundaries, skips known duplicates, never deletes local files, and does not migrate browser sessions.
 
-- copies snapshot/report artifacts only;
-- keeps workspace boundaries;
-- skips known duplicates;
-- never deletes the local files;
-- intentionally does not migrate browser sessions.
+Public reports generated before snapshot schema v4 do not contain the full durable reader payload. Refresh a legacy public report once after upgrading if it must survive process/cache restarts as a shareable `/u/<username>` page.
 
-Keep the local files until the hosted workspace has been verified.
+## 5. Production GitHub App
 
-## 4. Configure the production GitHub App
-
-Set the GitHub App homepage to the public Dev30 origin and the callback to:
+Configure the app homepage to the public Dev30 origin and callback:
 
 ```text
 https://your-dev30-domain.example/auth/github/callback
 ```
 
-Server environment:
+Server variables:
 
 ```env
 GITHUB_APP_CLIENT_ID=...
@@ -122,53 +108,46 @@ GITHUB_APP_CLIENT_SECRET=...
 GITHUB_APP_SLUG=...
 ```
 
-When `APP_BASE_URL` is set, Dev30 derives the callback automatically unless `GITHUB_OAUTH_CALLBACK_URL` explicitly overrides it.
-
 Recommended repository permissions remain read-only:
 
 - Metadata: read;
 - Contents: read;
 - Pull requests: read.
 
-After OAuth, Dev30 stores a durable workspace connection separately from the browser session. The GitHub credential is AES-256-GCM encrypted before persistence. This durable connection is what allows weekly reports to run after the browser is closed or the session cookie expires.
+After OAuth, Dev30 uses stable workspace identity `github:<github-user-id>`. The same value becomes the RevenueCat App User ID. Fresh analyses are metered against this connected workspace, not against the username being analyzed.
 
-## 5. Deploy the Node container
+Dev30 also persists an encrypted durable GitHub connection for scheduled Pro work. The credential is AES-256-GCM encrypted before persistence.
+
+## 6. Deploy the Node container
 
 Build:
 
 ```bash
-docker build -t dev30:1.0.0 .
+docker build -t dev30:1.1.0 .
 ```
 
-Do not copy `.env` into the image. Supply secrets through the deployment platform.
+Do not put `.env` in the image. Supply secrets through the deployment platform.
 
-The container exposes port 3000 and includes a health check against:
+The container exposes port 3000 and health-checks:
 
 ```text
 GET /api/ready
 ```
 
-Use the platform's HTTPS proxy and set `TRUST_PROXY=true` when appropriate.
-
-### Runtime safety checks
+Use a managed HTTPS proxy and set `TRUST_PROXY=true` where appropriate.
 
 Production startup fails when:
 
-- `APP_BASE_URL` is missing or not HTTPS (unless the explicit insecure-pilot override is set);
+- `APP_BASE_URL` is missing or insecure without the explicit pilot override;
 - `DEV30_SESSION_SECRET` is missing;
-- shared storage is not configured (unless the explicit single-instance storage override is set);
-- a server PAT is present without the explicit PAT pilot override.
+- shared storage is absent without the single-instance storage override;
+- a shared server PAT is present without the explicit PAT pilot override.
 
-The following remain warnings rather than startup blockers because the public analyzer can operate without them:
+Warnings rather than startup blockers include missing cron, Resend, GitHub App, or partial RevenueCat configuration. A production service without GitHub App cannot create new metered user workspaces, so treat that warning as a launch blocker even though the process can still serve saved public reports.
 
-- GitHub App absent → no multi-user private workspace;
-- cron secret absent → no scheduled execution;
-- Resend absent → scheduled reports can be prepared but not emailed;
-- partial Stripe configuration → upgrade UI remains disabled.
+## 7. Verify health/readiness
 
-## 6. Verify health and readiness
-
-Process/runtime diagnostics:
+Runtime diagnostics:
 
 ```text
 GET /api/health
@@ -180,11 +159,111 @@ Strict readiness:
 GET /api/ready
 ```
 
-A hosted instance should not receive traffic until `/api/ready` returns HTTP 200 and all configured persistence tables are reachable.
+Do not send pilot traffic until `/api/ready` returns HTTP 200 and shared persistence is reachable.
 
-## 7. Enable weekly schedule execution
+## 8. Fresh-analysis economics
 
-Generate a long random secret and configure:
+Hosted fresh analysis is a write/compute action:
+
+```text
+POST /api/analyze
+```
+
+It requires connected GitHub identity unless the exact report is already present in the in-memory cache. For a true fresh collection, Dev30:
+
+1. confirms the target GitHub username exists;
+2. consumes the connected workspace analysis quota;
+3. performs repository / commit / PR discovery;
+4. asks DeepSeek to synthesize the evidence when configured;
+5. persists a snapshot/report artifact.
+
+Invalid GitHub usernames therefore do not consume a quota unit. Cache hits are returned before metering.
+
+Saved public reports are reader actions:
+
+```text
+GET /api/public-report?username=...&days=30&locale=en
+```
+
+They consume no quota and do not invoke GitHub or DeepSeek. `/u/<username>` uses this path on initial load. Refreshing the report uses fresh Analyze and therefore consumes quota.
+
+## 9. DeepSeek cost telemetry
+
+Configure the current estimate baseline:
+
+```env
+DEEPSEEK_INPUT_USD_PER_MILLION=0.14
+DEEPSEEK_OUTPUT_USD_PER_MILLION=0.28
+```
+
+Every successful provider call logs a structured line beginning with:
+
+```text
+[dev30-ai]
+```
+
+The log contains operation, model, prompt/completion/total token counts and estimated USD cost. It does not include repository content or workspace ID. Treat the rate variables as deploy-time configuration because provider pricing can change.
+
+## 10. RevenueCat + Paddle
+
+RevenueCat is the entitlement source of truth. Paddle Billing is the intended web billing engine behind RevenueCat.
+
+Create the real RevenueCat/Paddle products externally, then configure:
+
+```env
+REVENUECAT_API_KEY=...
+REVENUECAT_ENTITLEMENT_ID=pro
+REVENUECAT_PURCHASE_LINK_URL=https://pay.rev.cat/<production-token>
+REVENUECAT_WEBHOOK_AUTH=<long-opaque-authorization-value>
+```
+
+Configure a RevenueCat Web Purchase Link backed by Paddle. Dev30 appends the stable `github:<user-id>` workspace ID as the RevenueCat App User ID.
+
+Configure the RevenueCat webhook target:
+
+```text
+POST https://your-dev30-domain.example/api/billing/webhook
+Authorization: <same REVENUECAT_WEBHOOK_AUTH value>
+```
+
+The webhook only invalidates Dev30's short-lived RevenueCat customer cache. Entitlement checks continue to read RevenueCat customer state; a webhook payload cannot directly grant Pro.
+
+Upgrade endpoint:
+
+```text
+POST /api/billing/checkout
+```
+
+Subscription-management endpoint:
+
+```text
+POST /api/billing/portal
+```
+
+The latter uses RevenueCat's customer `management_url` when one exists.
+
+Do not configure production from the old Stripe variables. `src/billing.mjs` and legacy persisted billing/event rows remain temporarily for compatibility but no longer determine runtime plan.
+
+## 11. Plan boundaries
+
+Current defaults:
+
+| Metric / month | Free | Pro |
+| --- | ---: | ---: |
+| Fresh analyses | 5 | 100 |
+| Stakeholder reports | 0 | 50 |
+| Scheduled runs | 0 | 8 |
+| Email deliveries | 0 | 8 |
+
+Private repository analysis is Pro-only. Client/founder report creation is Pro-only. Weekly automation and email are Pro-only.
+
+Reading saved public reports and their evidence remains free.
+
+Pricing/currency are deliberately not hard-coded in the repository. Configure monthly/annual prices in RevenueCat/Paddle once the real billing project exists.
+
+## 12. Weekly schedule execution
+
+Configure:
 
 ```env
 DEV30_CRON_SECRET=...
@@ -192,33 +271,27 @@ DEV30_CRON_BATCH=10
 DEV30_CRON_LEASE_SECONDS=900
 ```
 
-The repository includes `.github/workflows/hosted-cron.yml`, which calls the internal runner hourly. Configure these repository Actions secrets:
+Repository Actions secrets:
 
 ```text
 DEV30_HOSTED_URL=https://your-dev30-domain.example
 DEV30_CRON_SECRET=<same server secret>
 ```
 
-The runner calls:
+`.github/workflows/hosted-cron.yml` calls:
 
 ```text
 POST /api/internal/run-due
 Authorization: Bearer <DEV30_CRON_SECRET>
 ```
 
-The application, not GitHub Actions, decides which schedules are due. This keeps each user's timezone/day/hour logic in one place.
+The application decides which schedules are due. Each run has a lease plus stable report/delivery idempotency keys.
 
-Each run is protected by:
+A real Free plan does not run scheduled work. A temporary RevenueCat outage is treated as entitlement-provider unavailability and remains retryable rather than advancing a paid user's schedule to the following week.
 
-1. a database/local lease while claimed;
-2. a stable Dev30 delivery idempotency key based on schedule ID + scheduled timestamp;
-3. the email provider idempotency key when delivery is enabled.
+## 13. Email delivery
 
-A crash after report generation can therefore reuse the prepared report instead of generating a second artifact.
-
-## 8. Enable email delivery (optional)
-
-Set:
+Optional Resend configuration:
 
 ```env
 RESEND_API_KEY=...
@@ -226,77 +299,34 @@ DEV30_EMAIL_FROM=Dev30 <reports@your-domain.example>
 DEV30_EMAIL_REPLY_TO=optional@example.com
 ```
 
-Before enabling real recipients, verify the sender/domain according to the email provider's requirements.
+Verify the sender/domain externally before real recipients are enabled. If Resend is absent, Dev30 can prepare the scheduled report and records `report_ready_email_not_configured`; it never claims delivery happened.
 
-If email is not configured, a due schedule still creates its evidence-backed report and records `report_ready_email_not_configured`; it does not pretend the email was sent.
+## 14. Final hosted-pilot checks
 
-## 9. Enable billing (optional and last)
+Before inviting users verify all of the following:
 
-Public username analysis remains usable without Stripe.
+- public HTTPS URL is stable;
+- `/api/ready` is 200;
+- GitHub App login creates different workspace IDs for two test users;
+- a fresh analysis decrements the correct workspace quota;
+- a cache hit does not decrement quota;
+- the sixth Free fresh analysis is rejected;
+- a saved `/u/<username>` report remains readable after a process restart;
+- private analysis is rejected for Free and allowed for Pro;
+- RevenueCat entitlement maps only the matching `github:<id>` customer to Pro;
+- a RevenueCat outage never grants Pro;
+- scheduler/provider failures retry without duplicate report/email delivery;
+- `[dev30-ai]` logs show actual token/cost telemetry;
+- no API key or private evidence appears in browser bundles or logs.
 
-To expose the Pro upgrade button, all of the following must be configured:
+## 15. What this repository does not claim
 
-```env
-STRIPE_SECRET_KEY=...
-STRIPE_WEBHOOK_SECRET=...
-STRIPE_PRO_PRICE_ID=...
-APP_BASE_URL=https://your-dev30-domain.example
-```
+Green CI does **not** mean external SaaS resources exist. Live activation still requires secrets/resources that must never be committed:
 
-Configure the Stripe webhook endpoint as:
+- a real HTTPS domain/deployment;
+- a Supabase project with schema applied;
+- a production GitHub App;
+- a RevenueCat project and approved/configured Paddle Billing setup;
+- a verified Resend sender if email is enabled.
 
-```text
-POST https://your-dev30-domain.example/api/billing/webhook
-```
-
-The webhook must receive subscription lifecycle events used by Dev30, including checkout completion and subscription create/update/delete events.
-
-Dev30 verifies the webhook signature against the raw request body and deduplicates processed event IDs. Checkout completion alone does not grant Pro; the workspace becomes Pro only when a matching configured price has an `active` or `trialing` subscription state.
-
-The workspace also exposes a customer-portal action once a Stripe customer is linked.
-
-## 10. Plans and quotas
-
-Current server-side entitlement defaults are intentionally simple and can be tuned in `src/entitlements.mjs`:
-
-| Metric / month | Free | Pro |
-| --- | ---: | ---: |
-| Private fresh analyses | 60 | 1500 |
-| Stakeholder reports | 12 | 200 |
-| Scheduled report runs | 4 | 100 |
-| Email deliveries | 4 | 100 |
-
-Public analysis is not metered by this workspace ledger. Cache hits do not consume a fresh-analysis unit.
-
-`DEV30_FORCE_PLAN=free|pro` exists only for development/pilot validation. Do not use it as a production billing system.
-
-## 11. Local single-user smoke test after upgrading
-
-Your current PAT workflow remains available in development:
-
-```powershell
-$env:NODE_ENV="development"
-$env:DEV30_STORAGE_BACKEND="local"
-npm start
-```
-
-Verify:
-
-```text
-GET http://localhost:3000/api/health
-GET http://localhost:3000/api/ready
-```
-
-Then open `/workspace`, analyze the connected account, create a snapshot/report, and optionally create a weekly schedule after setting a stable `DEV30_SESSION_SECRET`.
-
-## 12. What 1.0 does not claim
-
-A green repository CI run does **not** mean a real hosted tenant has already been provisioned. Live production validation still requires credentials and resources that must not be committed:
-
-- a real domain / HTTPS deployment;
-- a Supabase project with the schema applied;
-- a production GitHub App installation;
-- a verified email sender if email is enabled;
-- Stripe test/live products, webhook secret, and price if billing is enabled.
-
-The code is designed to fail closed or clearly report unavailable features when those resources are missing rather than pretending they are live.
+See [`MONETIZATION.md`](./MONETIZATION.md) for the product/economics boundary.

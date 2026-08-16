@@ -1,4 +1,5 @@
 import { deterministicClientReport, normalizeClientReport } from './client-report.mjs';
+import { recordAiUsage } from './ai-telemetry.mjs';
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
 
@@ -32,6 +33,7 @@ export async function synthesizeClientReportWithDeepSeek(input) {
     });
     if (!response.ok) return fallback;
     const payload = await response.json();
+    recordAiUsage(payload, { operation: 'stakeholder_report', model });
     const content = payload?.choices?.[0]?.message?.content;
     if (!content) return fallback;
     const normalized = normalizeClientReport(JSON.parse(content), input, fallback);

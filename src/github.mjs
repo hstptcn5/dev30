@@ -1,5 +1,6 @@
 import { buildWorkUnits, summarizeWorkMix } from './analyzer.mjs';
 import { currentGitHubToken, currentWorkspaceId } from './github-auth-context.mjs';
+import { consumeEntitlement, quotaError } from './entitlements.mjs';
 
 const API_ROOT = 'https://api.github.com';
 const API_VERSION = '2026-03-10';
@@ -22,7 +23,7 @@ function headers() {
   const result = {
     Accept: 'application/vnd.github+json',
     'X-GitHub-Api-Version': API_VERSION,
-    'User-Agent': 'dev30/0.7',
+    'User-Agent': 'dev30/1.0',
   };
   const token = currentGitHubToken();
   if (token) result.Authorization = `Bearer ${token}`;
@@ -148,12 +149,13 @@ export async function collectGitHubActivity(username, { days = 30, includePrivat
   const analysisDays = normalizeAnalysisDays(days);
   const since = daysAgoIso(analysisDays);
   const authenticated = Boolean(currentGitHubToken());
+  const workspaceId = currentWorkspaceId();
   let latestRateLimit = null;
   let profile;
   let repoPathForPage;
 
   if (includePrivate) {
-    if (!authenticated) throw Object.assign(new Error('Private analysis requires a connected GitHub account.'), { status: 401 });
+    if (!authenticated || !workspaceId) throw Object.assign(new Error('Private analysis requires a connected GitHub account.'), { status: 401, code: 'github_connection_required' });
     const viewerResult = await githubFetch('/user');
     latestRateLimit = viewerResult.rateLimit;
     if (viewerResult.data.login?.toLowerCase() !== username.toLowerCase()) {
@@ -162,9 +164,14 @@ export async function collectGitHubActivity(username, { days = 30, includePrivat
     profile = viewerResult.data;
     repoPathForPage = (page) => `/user/repos?per_page=100&page=${page}&sort=pushed&direction=desc&affiliation=owner&visibility=all`;
   } else {
+    if (!authenticated || !workspaceId) {
+      throw Object.assign(new Error('Connect GitHub to run a fresh analysis. Cached and shared reports remain available without signing in.'), { status: 401, code: 'github_connection_required' });
+    }
     const profileResult = await githubFetch(`/users/${encodeURIComponent(username)}`);
     latestRateLimit = profileResult.rateLimit;
     profile = profileResult.data;
+    const usage = await consumeEntitlement(workspaceId, 'analysis');
+    if (!usage.accepted) throw quotaError('analysis', usage);
     repoPathForPage = (page) => `/users/${encodeURIComponent(username)}/repos?per_page=100&page=${page}&sort=pushed&direction=desc&type=owner`;
   }
 
@@ -334,7 +341,7 @@ export async function collectGitHubActivity(username, { days = 30, includePrivat
     collector: {
       authenticated,
       includePrivate,
-      workspaceId: includePrivate ? currentWorkspaceId() : null,
+      workspaceId: includePrivate ? workspaceId : null,
       githubRateLimit: latestRateLimit,
       candidateRepos: candidates.length,
       selectedRepos: repoSummaries.length,
@@ -345,7 +352,7 @@ export async function collectGitHubActivity(username, { days = 30, includePrivat
       repoPagesTruncated: reposResult.truncated,
       commitCountsTruncated: repoSummaries.filter((repo) => repo.commitsTruncated).map((repo) => repo.name),
       prCountsTruncated: repoSummaries.filter((repo) => repo.pullsTruncated).map((repo) => repo.name),
-      mode: includePrivate ? 'private-opt-in' : (authenticated ? 'authenticated-public' : 'public-lite'),
+      mode: includePrivate ? 'private-opt-in' : 'authenticated-public',
     },
   };
 }

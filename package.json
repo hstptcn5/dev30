@@ -1,6 +1,6 @@
 {
   "name": "dev30",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "private": true,
   "type": "module",
   "engines": { "node": ">=22" },
@@ -9,6 +9,6 @@
     "start": "node server.mjs",
     "test": "node --test",
     "smoke": "node scripts/smoke.mjs",
-    "check": "node --check server.mjs && node --check src/env.mjs && node --check src/runtime.mjs && node --check src/storage.mjs && node --check src/saas-store.mjs && node --check src/entitlements.mjs && node --check src/schedule.mjs && node --check src/email.mjs && node --check src/billing.mjs && node --check src/saas-routes.mjs && node --check src/workspace-connection.mjs && node --check src/github-auth-context.mjs && node --check src/github-oauth.mjs && node --check src/session.mjs && node --check src/github.mjs && node --check src/github-access.mjs && node --check src/analyzer.mjs && node --check src/deepseek.mjs && node --check src/cache.mjs && node --check src/history.mjs && node --check src/history-store.mjs && node --check src/client-report.mjs && node --check src/client-report-store.mjs && node --check src/client-report-deepseek.mjs && node --check scripts/migrate-local-to-supabase.mjs && node --check scripts/smoke.mjs && node --check public/app.js && node --check public/access.js && node --check public/client-report.js && node --check public/workspace.js && node --check public/pro-max.js && node --check public/polish.js"
+    "check": "node --check server.mjs && node --check src/env.mjs && node --check src/runtime.mjs && node --check src/storage.mjs && node --check src/saas-store.mjs && node --check src/revenuecat.mjs && node --check src/ai-telemetry.mjs && node --check src/public-report.mjs && node --check src/entitlements.mjs && node --check src/schedule.mjs && node --check src/email.mjs && node --check src/billing.mjs && node --check src/saas-routes.mjs && node --check src/workspace-connection.mjs && node --check src/github-auth-context.mjs && node --check src/github-oauth.mjs && node --check src/session.mjs && node --check src/github.mjs && node --check src/github-access.mjs && node --check src/analyzer.mjs && node --check src/deepseek.mjs && node --check src/cache.mjs && node --check src/history.mjs && node --check src/history-store.mjs && node --check src/client-report.mjs && node --check src/client-report-store.mjs && node --check src/client-report-deepseek.mjs && node --check scripts/migrate-local-to-supabase.mjs && node --check scripts/smoke.mjs && node --check public/monetization-preload.js && node --check public/monetization.js && node --check public/app.js && node --check public/access.js && node --check public/client-report.js && node --check public/workspace.js && node --check public/pro-max.js && node --check public/polish.js"
   }
 }

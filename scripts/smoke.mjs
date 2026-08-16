@@ -15,6 +15,9 @@ const child = spawn(process.execPath, ['server.mjs'], {
     GITHUB_APP_CLIENT_SECRET: '',
     SUPABASE_URL: '',
     SUPABASE_SECRET_KEY: '',
+    REVENUECAT_API_KEY: '',
+    REVENUECAT_PURCHASE_LINK_URL: '',
+    REVENUECAT_WEBHOOK_AUTH: '',
     STRIPE_SECRET_KEY: '',
     STRIPE_WEBHOOK_SECRET: '',
     STRIPE_PRO_PRICE_ID: '',
@@ -42,8 +45,9 @@ async function waitForServer() {
 
 async function main() {
   const health = await waitForServer();
-  if (health.productVersion !== '1.0.0') throw new Error(`Expected productVersion 1.0.0, received ${health.productVersion}`);
+  if (health.productVersion !== '1.1.0') throw new Error(`Expected productVersion 1.1.0, received ${health.productVersion}`);
   if (health.storage?.backend !== 'local') throw new Error(`Expected local storage, received ${health.storage?.backend}`);
+  if (health.runtime?.billingProvider !== 'revenuecat') throw new Error(`Expected RevenueCat billing provider, received ${health.runtime?.billingProvider}`);
 
   const readyResponse = await fetch(`${origin}/api/ready`);
   const ready = await readyResponse.json();
@@ -51,9 +55,9 @@ async function main() {
 
   const homepage = await fetch(`${origin}/`);
   const html = await homepage.text();
-  if (!homepage.ok || !html.includes('Dev30')) throw new Error('Homepage smoke check failed.');
+  if (!homepage.ok || !html.includes('Dev30') || !html.includes('/monetization-preload.js')) throw new Error('Homepage monetization smoke check failed.');
 
-  console.log(`smoke ok · product=${health.productVersion} · storage=${health.storage.backend}`);
+  console.log(`smoke ok · product=${health.productVersion} · storage=${health.storage.backend} · billing=${health.runtime.billingProvider}`);
 }
 
 try {

@@ -29,7 +29,7 @@ function fixture({ commits = 3, includePrivate = false, focus = 'Goflow', extraR
     ],
     evidence,
   };
-  const payload = { report: { headline: 'Recent work', mainFocus: { repo: focus, title: `${focus} focus` } } };
+  const payload = { report: { headline: 'Recent work', mainFocus: { repo: focus, title: `${focus} focus` } }, meta: { analysisMode: 'deepseek', model: 'test-model' } };
   return { dataset, payload };
 }
 
@@ -51,10 +51,13 @@ test('snapshot store persists and deduplicates identical analyses', async () => 
   assert.equal(entries.length, 1);
   assert.equal(entries[0].mainFocus.repo, 'Goflow');
   assert.equal(entries[0].evidenceCount, 1);
+  assert.equal(entries[0].reportReady, true);
 
   const full = await getSnapshotById(first.id, { filePath });
-  assert.equal(full.schemaVersion, 3);
+  assert.equal(full.schemaVersion, 4);
   assert.equal(full.evidence[0].id, 'E1');
+  assert.equal(full.report.headline, 'Recent work');
+  assert.equal(full.analysisMode, 'deepseek');
 
   const stored = JSON.parse(await readFile(filePath, 'utf8'));
   assert.equal(stored.snapshots.length, 1);
