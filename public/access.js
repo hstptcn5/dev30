@@ -48,7 +48,13 @@ async function bootGitHubWorkspace() {
     if (me.access?.readyForPrivateAnalysis) {
       accountNote.textContent = `GitHub connected · ${me.access.privateReposAccessible} private repos available`;
       privateWrap?.classList.remove('hidden');
-      if (privateToggle) privateToggle.disabled = false;
+      if (privateWrap) privateWrap.title = 'Private analysis may save selected private GitHub metadata in your workspace and send selected work metadata to the configured AI provider.';
+      if (privateToggle) {
+        privateToggle.disabled = false;
+        privateToggle.addEventListener('change', () => {
+          if (privateToggle.checked) sessionStorage.setItem('dev30-private-warning-accepted', '1');
+        });
+      }
     } else if (me.access?.status === 'no-private-repos-accessible') {
       accountNote.textContent = 'GitHub connected · private repositories are not available yet';
       if (me.authMode === 'github-app' && me.installUrl) {
