@@ -2,6 +2,8 @@ const form = document.querySelector('#analyze-form');
 const analyzeButton = document.querySelector('#analyze-button');
 const report = document.querySelector('#report');
 const status = document.querySelector('#status');
+const privateToggle = document.querySelector('#private-toggle');
+const privateToggleWrap = document.querySelector('#private-toggle-wrap');
 
 function ensureToastRegion() {
   let region = document.querySelector('.pm-toast-region');
@@ -29,11 +31,24 @@ function toast(message, kind = 'info') {
 // Keep confirm() for destructive disconnect, but make ordinary failures non-blocking.
 window.alert = (message) => toast(message, 'error');
 
+// The private-repository checkbox is the consent action. Put the consequence next
+// to that control and remember the explicit check for this browser session so the
+// analyzer does not immediately ask for the same consent again in a modal.
+if (privateToggle && privateToggleWrap) {
+  const note = document.createElement('small');
+  note.className = 'private-privacy-note';
+  note.textContent = 'Selected work metadata may be stored in this workspace and sent to the configured DeepSeek API.';
+  privateToggleWrap.append(note);
+  privateToggle.addEventListener('change', () => {
+    if (privateToggle.checked) sessionStorage.setItem('dev30-private-warning-accepted', '1');
+  });
+}
+
 if (form && analyzeButton) {
   const defaultLabel = analyzeButton.textContent;
   form.addEventListener('submit', () => {
     document.body.classList.add('analysis-pending');
-    document.querySelector('#report')?.setAttribute('aria-busy', 'true');
+    report?.setAttribute('aria-busy', 'true');
     analyzeButton.setAttribute('aria-busy', 'true');
     analyzeButton.textContent = 'Reading GitHub…';
   }, { capture: true });
