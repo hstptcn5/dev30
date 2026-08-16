@@ -56,12 +56,16 @@ test('Netlify function executes the existing Dev30 Node request listener', async
   }
 });
 
-test('Netlify deployment keeps static shell on CDN and backend on Functions without esbuild flattening', async () => {
+test('Netlify deployment keeps the Dev30 server module outside the function entry bundle', async () => {
   const config = await readFile(new URL('../netlify.toml', import.meta.url), 'utf8');
   const fn = await readFile(new URL('../netlify/functions/dev30.mjs', import.meta.url), 'utf8');
   assert.match(config, /publish = "public"/);
   assert.match(config, /node_bundler = "zisi"/);
   assert.doesNotMatch(config, /node_bundler = "esbuild"/);
+  assert.match(config, /included_files = \["server\.mjs", "src\/\*\*"\]/);
+  assert.match(fn, /\['\.\.', '\.\.', 'server\.mjs'\]\.join\('\/'\)/);
+  assert.match(fn, /await import\(serverUrl\.href\)/);
+  assert.doesNotMatch(fn, /import\(['"]\.\.\/\.\.\/server\.mjs['"]\)/);
   assert.match(config, /from = "\/u\/\*"[\s\S]*to = "\/index\.html"/);
   assert.match(config, /from = "\/workspace"[\s\S]*to = "\/index\.html"/);
   assert.match(fn, /path: \['\/api\/\*', '\/auth\/\*'\]/);
