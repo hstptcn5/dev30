@@ -31,13 +31,12 @@ function toast(message, kind = 'info') {
 // Keep confirm() for destructive disconnect, but make ordinary failures non-blocking.
 window.alert = (message) => toast(message, 'error');
 
-// The private-repository checkbox is the consent action. Put the consequence next
-// to that control and remember the explicit check for this browser session so the
-// analyzer does not immediately ask for the same consent again in a modal.
+// The private-repository checkbox is the consent action. Keep the consequence visible
+// beside that control without turning the connected-account row into a settings panel.
 if (privateToggle && privateToggleWrap) {
   const note = document.createElement('small');
   note.className = 'private-privacy-note';
-  note.textContent = 'Selected work metadata may be stored in this workspace and sent to the configured DeepSeek API.';
+  note.textContent = 'Private work metadata may be saved here and sent to DeepSeek.';
   privateToggleWrap.append(note);
   privateToggle.addEventListener('change', () => {
     if (privateToggle.checked) sessionStorage.setItem('dev30-private-warning-accepted', '1');
