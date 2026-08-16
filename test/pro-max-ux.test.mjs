@@ -36,7 +36,7 @@ test('recoverable failures are non-blocking and private consent is explicit once
   const workspace = await read('public/workspace.js');
   assert.match(proMax, /window\.alert = \(message\) => toast\(message, 'error'\)/);
   assert.match(proMax, /aria-live/);
-  assert.match(proMax, /Selected work metadata may be stored in this workspace/);
+  assert.match(proMax, /Private work metadata may be saved here and sent to DeepSeek/);
   assert.match(proMax, /sessionStorage\.setItem\('dev30-private-warning-accepted', '1'\)/);
   assert.match(workspace, /confirm\('Disconnect GitHub and stop scheduled work for this workspace\?'\)/);
 });

@@ -55,7 +55,7 @@ Dev30 uses a **warm-light editorial** system:
 - shallow shadows used sparingly for command, preview and operational surfaces;
 - no global dark panels, neon glow, purple AI gradients or glass-card aesthetic.
 
-`public/light-theme.css` is loaded after the Pro Max structural layer. This intentionally keeps the existing layout/interaction improvements while replacing the previous dark visual tokens and dark residual surfaces.
+`public/light-theme.css` is loaded after the Pro Max structural layer. `public/polish.css` is the final screenshot-driven density/hierarchy layer. These preserve the product flow while allowing visual refinements to remain reversible and auditable.
 
 ## Intentional UX deltas
 
@@ -66,6 +66,8 @@ Dev30 uses a **warm-light editorial** system:
 - Make the command surface a clear white object against the warm-light page.
 - Preserve connected-private-repo consent as an explicit optional control, not a second flow.
 - Keep the example briefing visible early and visually closer to the real report.
+- On wide desktop screens, reduce hero-only whitespace so the command surface and example output feel causally connected.
+- Keep the connected GitHub state as a compact status row; show private availability and privacy consequence without turning it into a settings card.
 
 ### Report
 
@@ -79,6 +81,9 @@ Dev30 uses a **warm-light editorial** system:
 
 - Present the workspace as a developer journal, not an admin dashboard.
 - Latest snapshot / change / next update remain above settings and quotas.
+- Make **Latest activity** the dominant returning-user surface; it is larger and contained while the two status summaries remain lighter-weight.
+- Put `Analyze latest work` with the latest-activity surface instead of floating it in the page header.
+- Remove duplicate refresh links when they perform the same action as the dominant CTA.
 - Keep overview/history surfaces light and mostly borderless.
 - Use a white contained surface for the schedule editor because it is an operational task.
 - Keep destructive/disconnect settings visually distinct without using a dark danger zone.
@@ -90,6 +95,7 @@ Dev30 uses a **warm-light editorial** system:
 - Destructive GitHub disconnect keeps explicit confirmation.
 - Focus-visible styling applies to buttons, links, inputs, selects and disclosure summaries.
 - Reduced-motion removes decorative progress animation.
+- Private-repository consent remains one explicit checkbox; the consequence copy is concise and visible beside that control.
 
 ## Responsive targets
 
@@ -106,6 +112,7 @@ At narrow widths:
 - project/observation/technical grids become one column;
 - evidence metadata wraps instead of forcing horizontal scroll;
 - workspace overview and schedule fields collapse by task priority;
+- the dominant latest-activity CTA becomes a full-width mobile action;
 - shadows are reduced so mobile does not look like a stack of floating cards.
 
 ## Preserve
@@ -118,6 +125,7 @@ Do not casually change these in future polish passes:
 - public-by-default privacy posture;
 - private repository opt-in;
 - reader-first report ordering;
+- latest-activity-first workspace hierarchy;
 - progressive disclosure for technical/evidence layers;
 - local-first/PAT development compatibility.
 
