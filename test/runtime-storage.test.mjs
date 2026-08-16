@@ -51,13 +51,25 @@ test('production rejects shared PAT fallback unless an explicit single-user pilo
   assert.equal(allowed.ok, true);
 });
 
-test('production warns when scheduler, email, GitHub App, or partial billing are unavailable', () => {
-  const result = validateRuntimeConfig(productionEnv({ STRIPE_SECRET_KEY: 'sk_test_x' }));
+test('production warns when scheduler, email, GitHub App, or partial RevenueCat billing are unavailable', () => {
+  const result = validateRuntimeConfig(productionEnv({ REVENUECAT_API_KEY: 'rc_secret_test' }));
   assert.equal(result.ok, true);
   assert.equal(result.warnings.some((item) => item.includes('GitHub App')), true);
   assert.equal(result.warnings.some((item) => item.includes('DEV30_CRON_SECRET')), true);
   assert.equal(result.warnings.some((item) => item.includes('Resend')), true);
-  assert.equal(result.warnings.some((item) => item.includes('Stripe')), true);
+  assert.equal(result.warnings.some((item) => item.includes('RevenueCat')), true);
+});
+
+test('RevenueCat billing config is complete with API key and purchase link while webhook auth stays optional', () => {
+  const result = validateRuntimeConfig(productionEnv({
+    REVENUECAT_API_KEY: 'rc_secret_test',
+    REVENUECAT_PURCHASE_LINK_URL: 'https://pay.rev.cat/test-token',
+  }));
+  assert.equal(result.config.billingProvider, 'revenuecat');
+  assert.equal(result.config.billingEngine, 'paddle');
+  assert.equal(result.config.billingConfigured, true);
+  assert.equal(result.config.billingParts.entitlementId, 'pro');
+  assert.equal(result.warnings.some((item) => item.includes('REVENUECAT_WEBHOOK_AUTH')), true);
 });
 
 test('storage config supports current Supabase secret keys and legacy service role keys', () => {
