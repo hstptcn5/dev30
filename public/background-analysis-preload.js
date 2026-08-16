@@ -86,6 +86,17 @@
       return nativeFetch(input, init);
     }
 
+    // Let the monetization preload resolve anonymous /u/:username reads from
+    // durable public snapshots. Only a fresh/refresh Analyze belongs in the
+    // long-running background worker.
+    const sharedRoute = location.pathname.match(/^\/u\/([^/]+)\/?$/);
+    if (sharedRoute && payload.refresh !== true && payload.includePrivate !== true) {
+      const routeUsername = decodeURIComponent(sharedRoute[1]);
+      if (String(payload.username || '').toLowerCase() === routeUsername.toLowerCase()) {
+        return nativeFetch(input, init);
+      }
+    }
+
     const jobId = crypto.randomUUID();
     let start;
     try {
@@ -104,9 +115,9 @@
     if (start.status === 404 || start.status === 405) return nativeFetch(input, init);
 
     if (start.status !== 202) {
-      const payload = await safeJson(start);
+      const responsePayload = await safeJson(start);
       return jsonResponse(start.status || 502, {
-        error: payload?.error || 'The hosted analysis worker could not be started.',
+        error: responsePayload?.error || 'The hosted analysis worker could not be started.',
       });
     }
 
