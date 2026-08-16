@@ -12,7 +12,13 @@ http.createServer = (listener) => {
 };
 
 try {
-  await import('../../server.mjs');
+  // Keep server.mjs out of the function entry bundle. Netlify copies it and
+  // src/** via included_files, then Node loads it as its own ESM module scope.
+  // Construct the specifier at runtime so the function bundler does not flatten
+  // the server module graph into this entry file and recreate identifier clashes.
+  const serverSpecifier = ['..', '..', 'server.mjs'].join('/');
+  const serverUrl = new URL(serverSpecifier, import.meta.url);
+  await import(serverUrl.href);
 } finally {
   http.createServer = originalCreateServer;
 }
