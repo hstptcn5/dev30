@@ -10,9 +10,17 @@ function baseUrl(env = process.env) {
 }
 
 export function billingConfig(env = process.env) {
+  const secretConfigured = Boolean(String(env.STRIPE_SECRET_KEY || '').trim());
+  const webhookConfigured = Boolean(String(env.STRIPE_WEBHOOK_SECRET || '').trim());
+  const priceConfigured = Boolean(String(env.STRIPE_PRO_PRICE_ID || '').trim());
+  const baseUrlConfigured = Boolean(baseUrl(env));
   return {
-    configured: Boolean(String(env.STRIPE_SECRET_KEY || '').trim() && String(env.STRIPE_PRO_PRICE_ID || '').trim() && baseUrl(env)),
-    webhookConfigured: Boolean(String(env.STRIPE_WEBHOOK_SECRET || '').trim()),
+    configured: secretConfigured && webhookConfigured && priceConfigured && baseUrlConfigured,
+    checkoutConfigured: secretConfigured && priceConfigured && baseUrlConfigured,
+    webhookConfigured,
+    secretConfigured,
+    priceConfigured,
+    baseUrlConfigured,
     proPriceId: String(env.STRIPE_PRO_PRICE_ID || '').trim() || null,
   };
 }
@@ -39,7 +47,9 @@ async function stripePost(path, params, env = process.env) {
 
 export async function createCheckoutSession({ workspaceId, email = null }, env = process.env) {
   const config = billingConfig(env);
-  if (!config.configured) throw Object.assign(new Error('Stripe checkout is not configured.'), { status: 503, code: 'billing_not_configured' });
+  if (!config.configured) {
+    throw Object.assign(new Error('Stripe billing is incomplete. Configure the secret key, webhook secret, Pro price, and APP_BASE_URL before accepting payment.'), { status: 503, code: 'billing_not_configured' });
+  }
   const existing = await getBilling(workspaceId);
   const origin = baseUrl(env);
   const params = {
@@ -60,6 +70,8 @@ export async function createCheckoutSession({ workspaceId, email = null }, env =
 }
 
 export async function createPortalSession({ workspaceId }, env = process.env) {
+  const config = billingConfig(env);
+  if (!config.secretConfigured || !config.baseUrlConfigured) throw Object.assign(new Error('Stripe customer portal is not configured.'), { status: 503, code: 'billing_not_configured' });
   const origin = baseUrl(env);
   const billing = await getBilling(workspaceId);
   if (!billing?.stripeCustomerId) throw Object.assign(new Error('No Stripe customer is linked to this workspace yet.'), { status: 409, code: 'billing_customer_missing' });
