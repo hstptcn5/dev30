@@ -4,6 +4,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { refreshGitHubUserToken, tokenCredential } from './github-oauth.mjs';
 import { remoteCreateSession, remoteDeleteSession, remoteGetSession, remoteSessionStats, remoteStorageEnabled, remoteUpdateSessionCredential } from './storage.mjs';
+import { deleteWorkspaceConnection, disableSchedule } from './saas-store.mjs';
 
 const STORE_VERSION = 1;
 const SESSION_COOKIE = 'dev30_session';
@@ -212,8 +213,13 @@ export async function getSession(req, { filePath = null, refresh = true } = {}) 
   return session;
 }
 
-export async function destroySession(req, { filePath = null } = {}) {
+export async function destroySession(req, { filePath = null, disconnectWorkspace = true } = {}) {
   const id = parseCookies(req)[SESSION_COOKIE];
+  let session = null;
+  if (id && disconnectWorkspace) {
+    session = await getSession(req, { filePath, refresh: false }).catch(() => null);
+  }
+
   if (id) {
     if (useRemote(filePath)) await remoteDeleteSession(id);
     else {
@@ -223,6 +229,14 @@ export async function destroySession(req, { filePath = null } = {}) {
       await writeStore(store, localPath);
     }
   }
+
+  if (disconnectWorkspace && session?.workspaceId) {
+    // Disconnect is a privacy action, not just a browser logout: stop future
+    // scheduled work and delete the durable GitHub credential for this workspace.
+    await disableSchedule(session.workspaceId);
+    await deleteWorkspaceConnection(session.workspaceId);
+  }
+
   return cookie(SESSION_COOKIE, '', { req, clear: true });
 }
 
