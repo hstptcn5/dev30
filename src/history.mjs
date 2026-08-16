@@ -3,7 +3,7 @@ import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 
 const STORE_VERSION = 1;
-const SNAPSHOT_SCHEMA_VERSION = 3;
+const SNAPSHOT_SCHEMA_VERSION = 4;
 const DEFAULT_MAX_PER_SERIES = 24;
 const DEFAULT_MAX_TOTAL = 500;
 
@@ -84,6 +84,8 @@ export function buildSnapshot({ dataset, payload, locale = 'en', generatedAt = n
       login: dataset.profile.login,
       name: dataset.profile.name || '',
       avatarUrl: dataset.profile.avatarUrl || '',
+      bio: dataset.profile.bio || '',
+      htmlUrl: dataset.profile.htmlUrl || '',
     },
     repos: dataset.repos.map((repo) => ({
       name: repo.name,
@@ -94,6 +96,7 @@ export function buildSnapshot({ dataset, payload, locale = 'en', generatedAt = n
       pullsTruncated: Boolean(repo.pullsTruncated),
       language: repo.language || null,
       stars: repo.stars || 0,
+      url: repo.url || '',
     })),
     workMix: { ...dataset.workMix },
     workUnits: dataset.workUnits.slice(0, 160).map((unit) => ({
@@ -118,6 +121,9 @@ export function buildSnapshot({ dataset, payload, locale = 'en', generatedAt = n
       title: payload.report?.mainFocus?.title || '',
     },
     headline: payload.report?.headline || '',
+    report: payload.report || null,
+    analysisMode: payload.meta?.analysisMode || 'deterministic',
+    model: payload.meta?.model || null,
   };
   snapshot.signature = signatureFor(snapshot);
   return snapshot;
@@ -137,6 +143,7 @@ export function snapshotSummary(snapshot) {
     headline: snapshot.headline,
     workMix: snapshot.workMix,
     evidenceCount: snapshot.evidence?.length || 0,
+    reportReady: Boolean(snapshot.report),
   };
 }
 
@@ -153,6 +160,11 @@ export async function saveSnapshot(snapshot, {
   const latest = series[0] || null;
 
   if (latest?.signature === snapshot.signature) {
+    // Upgrade an otherwise identical legacy snapshot to the current share-ready payload.
+    if (!latest.report && snapshot.report) {
+      Object.assign(latest, snapshot, { id: latest.id, generatedAt: latest.generatedAt, signature: latest.signature });
+      await writeStore(store, filePath);
+    }
     return { snapshot: latest, previous: series[1] || null, created: false, total: series.length };
   }
 
