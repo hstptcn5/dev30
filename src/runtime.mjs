@@ -31,7 +31,7 @@ export function runtimeConfig(env = process.env) {
   const billingParts = {
     apiKey: present(env.REVENUECAT_API_KEY),
     purchaseLink: present(env.REVENUECAT_PURCHASE_LINK_URL),
-    entitlement: present(env.REVENUECAT_ENTITLEMENT_ID) || true,
+    entitlementId: String(env.REVENUECAT_ENTITLEMENT_ID || 'pro').trim() || 'pro',
     webhookAuth: present(env.REVENUECAT_WEBHOOK_AUTH),
   };
   return {
