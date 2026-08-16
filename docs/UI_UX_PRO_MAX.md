@@ -1,10 +1,16 @@
 # Dev30 UI UX Pro Max design delta
 
-This document records the intentional UI/UX direction applied after real-user pilot feedback. It is not a replacement design system. Dev30 keeps its existing dark neutral identity, evidence-first product model, and zero-runtime-dependency frontend.
+This document records the intentional UI/UX direction applied after real-user pilot feedback. It is not a replacement design system. Dev30 keeps its evidence-first product model, reader-first information architecture, and zero-runtime-dependency frontend.
 
 ## Inputs
 
 The redesign follows `hstptcn5/ui-ux-pro-max-personal` and the pinned upstream UI UX Pro Max baseline `v2.15.0` / commit `a38d04c3d5c298c851dbe5e6ee1965ee3de42cb5`.
+
+The explicit visual preference is now:
+
+> Use a light interface. Avoid a dark overall theme.
+
+Per UI UX Pro Max Personal priority order, explicit user intent overrides earlier aesthetic preservation decisions.
 
 Relevant personal rules:
 
@@ -36,30 +42,46 @@ Primary returning-user job:
 
 Dev30 is primarily a **reader/briefing** experience. Evidence and technical metrics are verification layers, not the opening screen.
 
-## Intentional visual deltas
+## Visual direction
+
+Dev30 uses a **warm-light editorial** system:
+
+- warm off-white page background instead of pure white glare;
+- white primary surfaces with soft neutral separators;
+- charcoal text for strong reading contrast;
+- restrained green for primary action, verified states and product identity;
+- blue for links and keyboard focus;
+- pale mint / pale blue surfaces only when they communicate grouping or state;
+- shallow shadows used sparingly for command, preview and operational surfaces;
+- no global dark panels, neon glow, purple AI gradients or glass-card aesthetic.
+
+`public/light-theme.css` is loaded after the Pro Max structural layer. This intentionally keeps the existing layout/interaction improvements while replacing the previous dark visual tokens and dark residual surfaces.
+
+## Intentional UX deltas
 
 ### Home
 
 - Keep exactly one primary action: `See their work`.
 - Treat username + time window + language as one command surface.
-- Reduce hero-only space and make the example briefing feel like a real output surface.
+- Make the command surface a clear white object against the warm-light page.
 - Preserve connected-private-repo consent as an explicit optional control, not a second flow.
-- Use concise outcome copy rather than architecture or access terminology.
+- Keep the example briefing visible early and visually closer to the real report.
 
 ### Report
 
 - Use editorial reading hierarchy: profile context → briefing → main focus → projects → observations.
-- Remove the visual feeling that every paragraph needs a card.
 - Use whitespace, separators and typography before borders/elevation.
-- Keep technical details and evidence collapsed but easy to find.
+- Keep the report itself largely paper-like rather than turning every section into a card.
+- Keep technical details and evidence collapsed but easy to find on white grouped surfaces.
 - Make long repository names, evidence titles and translated copy wrap safely.
 
 ### Workspace
 
 - Present the workspace as a developer journal, not an admin dashboard.
 - Latest snapshot / change / next update remain above settings and quotas.
-- Reduce card density in history and overview surfaces.
-- Keep the schedule editor clearly operational because that screen is an operator task.
+- Keep overview/history surfaces light and mostly borderless.
+- Use a white contained surface for the schedule editor because it is an operational task.
+- Keep destructive/disconnect settings visually distinct without using a dark danger zone.
 
 ## Interaction deltas
 
@@ -83,13 +105,15 @@ At narrow widths:
 - command controls stack intentionally;
 - project/observation/technical grids become one column;
 - evidence metadata wraps instead of forcing horizontal scroll;
-- workspace overview and schedule fields collapse by task priority.
+- workspace overview and schedule fields collapse by task priority;
+- shadows are reduced so mobile does not look like a stack of floating cards.
 
 ## Preserve
 
 Do not casually change these in future polish passes:
 
-- green/blue on dark-neutral identity;
+- light overall visual direction;
+- green/blue functional identity on warm neutral surfaces;
 - evidence-backed claim model;
 - public-by-default privacy posture;
 - private repository opt-in;
@@ -97,4 +121,4 @@ Do not casually change these in future polish passes:
 - progressive disclosure for technical/evidence layers;
 - local-first/PAT development compatibility.
 
-Future redesigns should identify a concrete user failure before replacing these decisions.
+Future redesigns should identify a concrete user failure or explicit user preference before replacing these decisions.
