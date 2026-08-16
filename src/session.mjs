@@ -220,6 +220,14 @@ export async function destroySession(req, { filePath = null, disconnectWorkspace
     session = await getSession(req, { filePath, refresh: false }).catch(() => null);
   }
 
+  if (disconnectWorkspace && session?.workspaceId) {
+    // Disconnect is a privacy action, not just a browser logout. Perform the
+    // durable cleanup first; if it fails, keep the browser session so the user
+    // is not shown as disconnected while background access is still active.
+    await disableSchedule(session.workspaceId);
+    await deleteWorkspaceConnection(session.workspaceId);
+  }
+
   if (id) {
     if (useRemote(filePath)) await remoteDeleteSession(id);
     else {
@@ -228,13 +236,6 @@ export async function destroySession(req, { filePath = null, disconnectWorkspace
       store.sessions = store.sessions.filter((item) => item.id !== id);
       await writeStore(store, localPath);
     }
-  }
-
-  if (disconnectWorkspace && session?.workspaceId) {
-    // Disconnect is a privacy action, not just a browser logout: stop future
-    // scheduled work and delete the durable GitHub credential for this workspace.
-    await disableSchedule(session.workspaceId);
-    await deleteWorkspaceConnection(session.workspaceId);
   }
 
   return cookie(SESSION_COOKIE, '', { req, clear: true });
