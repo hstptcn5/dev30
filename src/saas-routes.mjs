@@ -5,9 +5,9 @@ import { synthesizeClientReportWithDeepSeek } from './client-report-deepseek.mjs
 import { getClientReportPersistent, saveClientReportPersistent } from './client-report-store.mjs';
 import { compareSnapshots } from './history.mjs';
 import { getPreviousSnapshotPersistent, getSnapshotByIdPersistent } from './history-store.mjs';
-import { billingConfig, createCheckoutSession, createPortalSession, verifyStripeSignature, applyStripeEvent } from './billing.mjs';
+import { createCheckoutSession, createPortalSession, revenueCatConfig, verifyRevenueCatWebhook, applyRevenueCatWebhook } from './revenuecat.mjs';
 import { emailConfig, renderStakeholderEmail, sendEmail } from './email.mjs';
-import { consumeEntitlement, entitlementSnapshot, quotaError } from './entitlements.mjs';
+import { consumeEntitlement, entitlementSnapshot, proRequiredError, quotaError } from './entitlements.mjs';
 import { nextScheduledRun, schedulePayload } from './schedule.mjs';
 import { destroySession } from './session.mjs';
 import {
@@ -87,6 +87,9 @@ async function runOneSchedule(schedule, deps) {
   let receipt = await getDeliveryByKey(idempotencyKey);
   const auth = await loadWorkspaceAuth(schedule.workspaceId);
   if (!auth) throw Object.assign(new Error('No durable GitHub connection exists for this workspace.'), { status: 401, code: 'github_connection_missing' });
+
+  const currentEntitlement = await entitlementSnapshot(schedule.workspaceId);
+  if (currentEntitlement.plan !== 'pro') throw proRequiredError('Weekly automatic updates');
 
   let savedReport = receipt?.reportId ? await getClientReportPersistent(receipt.reportId) : null;
   if (!savedReport) {
@@ -213,7 +216,7 @@ export function createSaasRoutes(deps) {
           schedule,
           entitlement,
           email: emailConfig(),
-          billing: billingConfig(),
+          billing: revenueCatConfig(),
           durableConnectionReady: durableConnectionReady(),
         }), true;
       }
@@ -221,6 +224,8 @@ export function createSaasRoutes(deps) {
       if (req.method === 'POST' && url.pathname === '/api/schedule') {
         const auth = await deps.resolveAuth(req);
         if (!auth) return sendJson(res, 401, { error: 'Connect GitHub before enabling weekly reports.' }), true;
+        const entitlement = await entitlementSnapshot(auth.workspaceId);
+        if (entitlement.plan !== 'pro') throw proRequiredError('Weekly automatic updates');
         if (!durableConnectionReady()) return sendJson(res, 409, { error: 'Set DEV30_SESSION_SECRET before enabling scheduled reports so the GitHub connection survives restarts.' }), true;
         const body = await readJson(req);
         const schedule = schedulePayload(body, { workspaceId: auth.workspaceId, username: auth.viewer.login });
@@ -253,10 +258,9 @@ export function createSaasRoutes(deps) {
 
       if (req.method === 'POST' && url.pathname === '/api/billing/webhook') {
         const raw = await readRaw(req);
-        const signature = req.headers['stripe-signature'];
-        if (!verifyStripeSignature(raw, signature)) return sendJson(res, 400, { error: 'Invalid Stripe webhook signature.' }), true;
+        if (!verifyRevenueCatWebhook(req.headers.authorization || '')) return sendJson(res, 401, { error: 'Invalid RevenueCat webhook authorization.' }), true;
         const event = JSON.parse(raw);
-        const result = await applyStripeEvent(event);
+        const result = applyRevenueCatWebhook(event);
         return sendJson(res, 200, { received: true, ...result }), true;
       }
 
