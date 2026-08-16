@@ -1,70 +1,77 @@
 # Dev30
 
-**Dev30 turns recent GitHub activity into evidence-backed work reports, comparable history, and stakeholder-ready development updates.**
+**Dev30 turns recent GitHub activity into evidence-backed work briefings, comparable history, and stakeholder-ready development updates.**
 
 Dev30 is not a contribution counter and does not score developers. It collects GitHub evidence first, reconstructs meaningful work units, derives deterministic engineering signals, then asks DeepSeek to explain what was observed.
 
-## What Dev30 1.0 includes
+## Dev30 1.1
 
-- **Explain simply** — plain-language project summaries for non-technical readers.
-- **Technical view** — engineering work mix, repository activity, technology signals, timeline, and evidence.
-- **7 / 30 / 90 day windows** — public or connected-account analysis.
-- **Evidence ledger** — material claims link back to collected PRs and commits.
-- **Snapshot history** — persistent snapshots and deterministic comparisons over time.
-- **Client / founder updates** — concise stakeholder reports generated from saved evidence, with Markdown export.
-- **GitHub workspace** — GitHub App OAuth for hosted multi-user identity, plus PAT fallback for local development.
-- **Private repositories** — explicit connected-account mode, scoped to the authenticated workspace.
-- **Weekly reports** — timezone-aware schedules, durable GitHub connections, leased job execution, and retry-safe report artifacts.
-- **Email delivery boundary** — optional Resend delivery with Dev30 receipts and provider idempotency keys.
-- **Usage & plans** — monthly workspace usage ledger with Free / Pro entitlements.
-- **Billing-ready boundary** — optional Stripe Checkout, customer portal, signed webhook processing, and event deduplication.
-- **Hosted persistence** — local JSON for development or shared Supabase persistence for a multi-user pilot.
-- **Deployment guardrails** — production fail-fast checks, readiness probe, Docker image, hosted cron workflow, and explicit local→remote migration.
+Dev30 1.1 adds the monetization foundation required before a hosted SaaS pilot:
 
-Every material report claim is constrained to GitHub evidence IDs that Dev30 actually collected. Snapshot comparisons are computed deterministically before DeepSeek explains the delta.
+- **Fresh Analyze has identity and quota** — hosted fresh analysis is tied to the connected GitHub workspace, not the username being analyzed.
+- **Free / Pro boundary** — Free gets 5 fresh analyses/month; Pro gets 100 plus private analysis, stakeholder reports, weekly automation, and email delivery.
+- **Saved public reports stay free to read** — `/u/<username>` reads a durable public report without calling GitHub or DeepSeek again.
+- **RevenueCat-first entitlement** — RevenueCat is the runtime subscription source of truth; Paddle Billing is the intended web billing engine behind it.
+- **Stable billing identity** — `github:<github-user-id>` is both the Dev30 workspace ID and RevenueCat App User ID.
+- **DeepSeek cost telemetry** — successful model calls record prompt/completion tokens and an explicit configurable estimated cost.
+- **Local development stays billing-free** — local/PAT development without RevenueCat gets Pro-equivalent access; `DEV30_FORCE_PLAN=free` exercises the Free experience.
+
+The existing evidence, history, workspace, schedule, email, Supabase, Docker, and production-safety boundaries remain in place.
+
+## Core product
+
+- Plain-language 7 / 30 / 90-day GitHub work briefings.
+- Evidence ledger linking material claims to collected PRs and commits.
+- Deterministic work-unit reconstruction and engineering work mix.
+- Snapshot history and deterministic “what changed?” comparison.
+- Private repository analysis for the connected account.
+- Client / founder stakeholder updates with Markdown export.
+- GitHub App workspace identity for hosted multi-user use.
+- Weekly timezone-aware automatic reports with lease/idempotency protection.
+- Optional Resend email delivery.
+- Local JSON persistence for development or Supabase for hosted multi-user persistence.
+- Runtime fail-fast checks, `/api/ready`, Docker, hosted cron, and explicit local→remote migration.
+
+Every material report claim is constrained to GitHub evidence IDs that Dev30 actually collected. Snapshot comparison is computed before DeepSeek narrates the delta.
 
 ## Product flow
 
 ```text
-GitHub username / connected account
+Connected GitHub workspace
+    ↓
+fresh-analysis quota
     ↓
 7 / 30 / 90 day GitHub evidence collection
     ↓
-Repositories + commits + PRs + sampled changed-file metadata
+repositories + commits + PRs + sampled changed-file metadata
     ↓
-Deterministic work units + engineering mix
+deterministic work units + engineering mix
     ↓
-Evidence ledger
+evidence ledger
     ↓
 DeepSeek explanation
     ↓
-Persistent snapshot
+persistent snapshot / saved public report
     ↓
-Deterministic snapshot delta
+deterministic snapshot delta
     ↓
-Client / founder report
+optional Pro client/founder report
     ↓
-Optional weekly schedule + email delivery
+optional Pro weekly schedule + email
 ```
 
-Hosted connected-account flow:
+Reader flow is deliberately cheaper:
 
 ```text
-GitHub App OAuth
+/u/<username>
     ↓
-request-scoped credential
+GET /api/public-report
     ↓
-workspace github:<user-id>
+persisted public snapshot/report
     ↓
-encrypted durable GitHub connection
-    ↓
-private analysis + history + reports
-    ↓
-weekly scheduler
-    ↓
-usage / entitlement check
-    ↓
-optional email delivery
+no GitHub request
+no DeepSeek request
+no quota unit
 ```
 
 ## Run locally
@@ -81,7 +88,7 @@ Open `http://localhost:3000`.
 
 Dev30 has no npm runtime dependencies; it uses the Node.js standard library and native `fetch`.
 
-The current personal-development workflow remains intentionally simple:
+Local PAT development remains simple:
 
 ```env
 NODE_ENV=development
@@ -89,22 +96,113 @@ DEV30_STORAGE_BACKEND=local
 GITHUB_TOKEN=github_pat_...
 ```
 
-Your existing PAT can continue powering `/workspace` and private analysis locally. GitHub App setup is only required when testing or operating the hosted multi-user identity flow.
+When RevenueCat is absent in development, the local workspace receives Pro-equivalent feature access. To test Free locally:
 
-## Local persistence
+```env
+DEV30_FORCE_PLAN=free
+```
 
-With `DEV30_STORAGE_BACKEND=local`, gitignored files under `data/` hold:
+## Hosted identity and quota
 
-- `sessions.json` — browser GitHub App sessions when used locally;
-- `history.json` — evidence snapshots;
-- `client-reports.json` — stakeholder report artifacts;
-- `saas.json` — durable schedule, usage, billing test state, and delivery receipts.
+Production fresh analysis requires a GitHub App workspace identity. A workspace looks like:
 
-A stable `DEV30_SESSION_SECRET` is required before enabling weekly schedules because the durable GitHub credential must remain decryptable after a restart.
+```text
+github:116537093
+```
 
-## Hosted persistence
+The same stable value is the RevenueCat App User ID.
 
-For a multi-user hosted pilot:
+A public fresh analysis is charged to the **viewer/workspace running the analysis**, not to the GitHub username being analyzed. Dev30 confirms the target GitHub profile exists before consuming the quota, then performs the more expensive repo/commit/PR collection.
+
+In-memory cache hits are returned before metering.
+
+Current monthly defaults:
+
+| Capability | Free | Pro |
+| --- | ---: | ---: |
+| Fresh analyses | 5 | 100 |
+| Stakeholder reports | 0 | 50 |
+| Scheduled runs | 0 | 8 |
+| Email deliveries | 0 | 8 |
+
+Private repository analysis is Pro-only. Client/founder report creation is Pro-only. Weekly automation and email delivery are Pro-only.
+
+These are product defaults, not externally guaranteed pricing terms.
+
+## RevenueCat + Paddle
+
+RevenueCat is the runtime entitlement source of truth. Paddle Billing is the intended web billing engine / Merchant of Record behind RevenueCat.
+
+Activation variables:
+
+```env
+REVENUECAT_API_KEY=
+REVENUECAT_ENTITLEMENT_ID=pro
+REVENUECAT_PURCHASE_LINK_URL=https://pay.rev.cat/<production-token>
+REVENUECAT_WEBHOOK_AUTH=<opaque-shared-authorization-value>
+```
+
+Checkout:
+
+```text
+POST /api/billing/checkout
+```
+
+Subscription management:
+
+```text
+POST /api/billing/portal
+```
+
+RevenueCat webhook/cache invalidation:
+
+```text
+POST /api/billing/webhook
+Authorization: <REVENUECAT_WEBHOOK_AUTH>
+```
+
+A webhook cannot directly grant Pro. It invalidates the short-lived customer cache; entitlement checks continue to read RevenueCat customer state.
+
+Legacy `src/billing.mjs` and old billing/event persistence remain temporarily for compatibility but no longer determine runtime plan.
+
+See [`docs/MONETIZATION.md`](docs/MONETIZATION.md).
+
+## DeepSeek usage / cost telemetry
+
+Successful model calls record structured logs beginning with:
+
+```text
+[dev30-ai]
+```
+
+The telemetry records operation, model, prompt tokens, completion tokens, total tokens, estimated USD cost, and the rates used. It does not include private repository content or workspace IDs.
+
+Rates are deploy-time configuration:
+
+```env
+DEEPSEEK_INPUT_USD_PER_MILLION=0.14
+DEEPSEEK_OUTPUT_USD_PER_MILLION=0.28
+```
+
+They are estimates and can be changed without application code if provider pricing changes.
+
+## Persistent public reports
+
+Snapshot schema v4 stores the complete normalized public report payload needed to render a durable public briefing.
+
+```text
+GET /api/public-report?username=hstptcn5&days=30&locale=vi
+```
+
+This endpoint reads persistence only. It does not call GitHub or DeepSeek and does not consume analysis quota.
+
+Public reports created before schema v4 must be refreshed once to become durable reader artifacts.
+
+## Local and hosted persistence
+
+With `DEV30_STORAGE_BACKEND=local`, gitignored files under `data/` store sessions, snapshot history, stakeholder reports, schedules/usage state, and delivery receipts.
+
+For hosted multi-user persistence:
 
 ```env
 NODE_ENV=production
@@ -117,9 +215,7 @@ DEV30_SESSION_SECRET=<long-random-secret>
 
 Apply [`docs/SUPABASE_SCHEMA.sql`](docs/SUPABASE_SCHEMA.sql), then follow [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md).
 
-The hosted schema stores browser sessions, durable encrypted GitHub connections, evidence snapshots, reports, weekly schedules, quota counters, billing state, processed billing events, and delivery receipts.
-
-Existing local snapshot/report history is never uploaded automatically. Use the explicit dry-run/apply migration tool:
+Existing local snapshots/reports are never uploaded automatically:
 
 ```bash
 node scripts/migrate-local-to-supabase.mjs
@@ -128,73 +224,27 @@ node scripts/migrate-local-to-supabase.mjs --apply
 
 ## Weekly reports
 
-A connected workspace can configure:
+A Pro workspace can configure delivery email, weekday, local hour, IANA timezone, client/founder audience, 7/30/90-day evidence window, and English/Vietnamese output.
 
-- delivery email;
-- Sunday–Saturday;
-- local delivery hour;
-- IANA timezone;
-- client/founder audience;
-- 7/30/90 day evidence window;
-- English or Vietnamese output.
+`.github/workflows/hosted-cron.yml` calls the secret-protected due-schedule runner hourly. Dev30 claims due work with a lease and derives stable idempotency keys so retries reuse prepared artifacts instead of creating duplicate reports/emails.
 
-The repository includes an hourly `.github/workflows/hosted-cron.yml` caller. The application decides which schedules are due and claims them with a lease, so multiple job runners cannot normally execute the same schedule simultaneously.
-
-A stable delivery idempotency key is derived from the schedule and scheduled timestamp. A retry reuses an already prepared report rather than creating a second weekly artifact.
-
-If Resend is not configured, Dev30 records that the report was prepared but does not claim the email was delivered.
-
-## Plans and usage
-
-Workspace metering currently covers private/SaaS work only; public username analysis remains outside this ledger.
-
-Default monthly limits:
-
-| Metric | Free | Pro |
-| --- | ---: | ---: |
-| Private fresh analyses | 60 | 1500 |
-| Stakeholder reports | 12 | 200 |
-| Scheduled runs | 4 | 100 |
-| Email deliveries | 4 | 100 |
-
-Analysis cache hits do not consume a fresh-analysis unit.
-
-These are product defaults in `src/entitlements.mjs`, not externally guaranteed pricing terms.
-
-## Billing boundary
-
-Stripe is optional. The public analyzer and local product do not require billing.
-
-The workspace exposes an upgrade action only when all required billing pieces are present:
-
-```env
-STRIPE_SECRET_KEY=...
-STRIPE_WEBHOOK_SECRET=...
-STRIPE_PRO_PRICE_ID=...
-APP_BASE_URL=https://your-dev30-domain.example
-```
-
-Checkout completion alone does not grant Pro. Dev30 waits for a signed subscription lifecycle event and grants Pro only when the configured price is active or trialing.
-
-Processed Stripe event IDs are stored so webhook retries are idempotent.
+A temporary RevenueCat outage is treated as retryable for scheduled work; it does not grant Pro and should not silently skip a paid user to the following week.
 
 ## Production guardrails
 
 With `NODE_ENV=production`, Dev30 fails startup when:
 
 - `APP_BASE_URL` is missing;
-- the public origin is not HTTPS unless the explicit pilot override is enabled;
+- HTTPS is absent without the explicit pilot override;
 - `DEV30_SESSION_SECRET` is missing;
-- remote persistence is absent unless the explicit single-instance pilot override is enabled;
-- `GITHUB_TOKEN` is present without the explicit single-user PAT pilot override.
+- shared persistence is absent without the single-instance storage override;
+- `GITHUB_TOKEN` is present without the explicit single-user PAT override.
 
-The PAT rule is intentional: a single server PAT must not silently become the GitHub identity for every hosted visitor.
-
-GitHub App, cron, email, and Stripe can remain disabled; Dev30 reports those features as unavailable rather than pretending they are live.
+GitHub App, cron, email, and RevenueCat can technically be absent while the process serves existing public artifacts, but they are required for the corresponding hosted SaaS features.
 
 ## Main API surfaces
 
-### Analysis
+### Fresh analysis
 
 `POST /api/analyze`
 
@@ -208,6 +258,10 @@ GitHub App, cron, email, and Stripe can remain disabled; Dev30 reports those fea
 }
 ```
 
+### Saved public report
+
+`GET /api/public-report?username=hstptcn5&days=30&locale=vi`
+
 ### History
 
 `GET /api/history?username=hstptcn5&days=30&locale=vi&includePrivate=false`
@@ -216,14 +270,7 @@ GitHub App, cron, email, and Stripe can remain disabled; Dev30 reports those fea
 
 `POST /api/client-report`
 
-```json
-{
-  "snapshotId": "saved-snapshot-uuid",
-  "audience": "client"
-}
-```
-
-### Workspace
+### Workspace / automation
 
 - `GET /api/workspace`
 - `GET /api/workspace-settings`
@@ -238,54 +285,41 @@ GitHub App, cron, email, and Stripe can remain disabled; Dev30 reports those fea
 
 ### Operations
 
-- `GET /api/health` — process/runtime diagnostics;
-- `GET /api/ready` — strict runtime + persistence readiness;
-- `POST /api/internal/run-due` — secret-protected due-schedule runner;
-- `GET /api/internal/saas-stats` — secret-protected operational counts.
+- `GET /api/health`
+- `GET /api/ready`
+- `POST /api/internal/run-due`
+- `GET /api/internal/saas-stats`
 
 ## Evidence and privacy rules
 
 - GitHub evidence remains the source of truth; DeepSeek interprets it.
-- Prompts prohibit talent scores, hire/no-hire judgments, permanent personality/skill claims, unsupported impact claims, and invented future plans.
+- Prompts prohibit talent scoring, hiring judgments, permanent personality/skill claims, unsupported impact claims, and invented future plans.
 - Server normalization removes evidence IDs that were never collected.
-- Snapshot comparison is deterministic; DeepSeek is not asked to compare two free-form reports.
-- Client/founder updates are built from snapshot + delta + evidence payloads; the LLM is not allowed to invent blockers, deadlines, promises, or business impact.
-- Public lookup never enumerates private repositories.
-- Private analysis requires explicit connected-account mode and a matching GitHub identity.
-- Private snapshots/reports are workspace-scoped.
-- GitHub App tokens are encrypted before persistence; browser cookies contain an opaque session identifier, not the token.
-- Scheduled GitHub credentials are stored separately from browser sessions so weekly work can continue after browser logout, but they use the same server-side encryption secret.
-- Public stakeholder sharing is refused when the source snapshot/evidence is private.
-- Supabase, GitHub, DeepSeek, Resend, and Stripe secrets stay server-side.
+- Private analysis requires explicit connected-account mode and matching GitHub identity.
+- Private snapshots/reports remain workspace-scoped.
+- GitHub credentials are encrypted before persistence; browser cookies contain opaque session IDs.
+- Public stakeholder sharing is refused when source evidence is private.
+- Supabase, GitHub, DeepSeek, Resend, and RevenueCat secrets remain server-side.
 
 ## Validation
 
 ```bash
 npm test
 npm run check
-docker build -t dev30:1.0.0 .
+npm run smoke
+docker build -t dev30:1.1.0 .
 ```
 
-GitHub Actions runs the same test/check/container gate for pull requests.
+GitHub Actions runs the same gate for pull requests.
 
-## What “1.0” means here
+## Activation boundary
 
-The repository contains the complete pilot-ready product boundary, but a repository merge is **not** a claim that external production services have already been provisioned.
+A green repository does not mean external SaaS services have already been provisioned. A live hosted pilot still requires:
 
-A live hosted pilot still requires resources that must not be committed to source control:
+- a real HTTPS deployment/domain;
+- a Supabase project with schema applied;
+- a production GitHub App;
+- a RevenueCat project with Paddle Billing and real purchase links;
+- a verified Resend sender if email delivery is enabled.
 
-- a real HTTPS domain/deployment;
-- a Supabase project with the schema applied;
-- a production GitHub App installation for multi-user private workspaces;
-- a verified email sender if weekly email is enabled;
-- Stripe test/live resources if billing is enabled.
-
-See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for the exact activation order.
-
-## Known design boundaries
-
-- The analysis cache is process-local. A restart can cause a fresh GitHub/DeepSeek analysis; durable history/reports survive with Supabase.
-- Public GitHub event history is incomplete for long windows; older portions of 90-day reports rely primarily on repository commit/PR queries.
-- Collection is intentionally bounded and is not an audit, payroll, or billing ledger of engineering effort.
-- Changed-file metadata is sampled under a configurable request budget.
-- The 1.0 workspace model is one GitHub identity per workspace; organization/team administration is a later product surface rather than part of this pilot boundary.
+See [`docs/DEPLOYMENT.md`](docs/DEPLOYMENT.md) for activation order and [`docs/MONETIZATION.md`](docs/MONETIZATION.md) for the product/economics contract.
