@@ -46,5 +46,6 @@ export function recordAiUsage(payload, options = {}) {
   if (telemetry.totalTokens > 0) {
     console.info(`[dev30-ai] ${JSON.stringify(telemetry)}`);
   }
-  return telemetry;
+  // Telemetry is operational data. Do not return it into user-facing API payloads.
+  return null;
 }
