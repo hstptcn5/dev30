@@ -42,6 +42,24 @@ test('production accepts shared Supabase persistence with HTTPS and a persistent
   assert.equal(result.config.storage.backend, 'supabase');
 });
 
+test('production rejects shared PAT fallback unless an explicit single-user pilot escape hatch is set', () => {
+  const rejected = validateRuntimeConfig(productionEnv({ GITHUB_TOKEN: 'github_pat_test' }));
+  assert.equal(rejected.ok, false);
+  assert.equal(rejected.errors.some((item) => item.includes('GITHUB_TOKEN')), true);
+
+  const allowed = validateRuntimeConfig(productionEnv({ GITHUB_TOKEN: 'github_pat_test', ALLOW_PAT_IN_PRODUCTION: 'true' }));
+  assert.equal(allowed.ok, true);
+});
+
+test('production warns when scheduler, email, GitHub App, or partial billing are unavailable', () => {
+  const result = validateRuntimeConfig(productionEnv({ STRIPE_SECRET_KEY: 'sk_test_x' }));
+  assert.equal(result.ok, true);
+  assert.equal(result.warnings.some((item) => item.includes('GitHub App')), true);
+  assert.equal(result.warnings.some((item) => item.includes('DEV30_CRON_SECRET')), true);
+  assert.equal(result.warnings.some((item) => item.includes('Resend')), true);
+  assert.equal(result.warnings.some((item) => item.includes('Stripe')), true);
+});
+
 test('storage config supports current Supabase secret keys and legacy service role keys', () => {
   assert.equal(storageConfig(productionEnv()).readyToConnect, true);
   assert.equal(storageConfig({ DEV30_STORAGE_BACKEND: 'supabase', SUPABASE_URL: 'https://x.supabase.co' }).readyToConnect, false);
