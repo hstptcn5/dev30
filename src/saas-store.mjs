@@ -137,6 +137,7 @@ export async function upsertSchedule(input) {
       hourLocal: input.hourLocal,
       audience: input.audience,
       days: input.days,
+      locale: input.locale === 'vi' ? 'vi' : 'en',
       enabled: input.enabled !== false,
       nextRunAt: input.nextRunAt,
       leaseUntil: null,
