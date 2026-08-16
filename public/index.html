@@ -9,6 +9,7 @@
   <link rel="stylesheet" href="/client-report.css" />
   <link rel="stylesheet" href="/workspace.css" />
   <link rel="stylesheet" href="/ux-overrides.css" />
+  <link rel="stylesheet" href="/pro-max.css" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
@@ -25,9 +26,9 @@
 
     <section class="hero">
       <div class="hero-copy-block">
-        <p class="eyebrow">GitHub activity → understandable work</p>
+        <p class="eyebrow">Evidence-backed GitHub work briefing</p>
         <h1>Understand what someone <em>actually built.</em></h1>
-        <p class="hero-copy">Enter a GitHub username. Dev30 reconstructs recent work into a short, evidence-backed briefing you can understand in about 30 seconds.</p>
+        <p class="hero-copy">Enter a GitHub username. Get a 30-second briefing of the projects, changes and shipped work behind their recent activity.</p>
       </div>
 
       <form id="analyze-form" class="search-card">
@@ -49,7 +50,7 @@
         </div>
         <div class="search-foot">
           <button class="example-link" type="button" data-example="hstptcn5">Try an example →</button>
-          <span>Public GitHub only unless you explicitly include your connected private repositories.</span>
+          <span>Public GitHub by default. Private repositories are included only when you explicitly choose them.</span>
         </div>
       </form>
 
@@ -72,8 +73,8 @@
     <section id="example-preview" class="example-preview" aria-label="Example Dev30 output">
       <div class="preview-intro">
         <span class="section-kicker">What you get</span>
-        <h2>A briefing, not another activity dashboard.</h2>
-        <p>Dev30 starts with the work story. Technical details and raw GitHub evidence stay one click away.</p>
+        <h2>A briefing you can scan in 30 seconds.</h2>
+        <p>The work story comes first. Technical signals and raw GitHub evidence stay available when you want to verify the details.</p>
       </div>
       <div class="preview-card">
         <div class="preview-card-top"><span>GOFLOW</span><span>Example · 30 days</span></div>
@@ -86,8 +87,8 @@
 
     <section class="value-strip" aria-label="Dev30 principles">
       <div><strong>Read the story first</strong><span>Start with what changed and what shipped.</span></div>
-      <div><strong>Inspect when needed</strong><span>Technical signals and evidence stay available without dominating the page.</span></div>
-      <div><strong>Come back later</strong><span>Snapshots make progress comparable over time.</span></div>
+      <div><strong>Verify the claims</strong><span>Open the GitHub evidence behind important conclusions.</span></div>
+      <div><strong>Compare over time</strong><span>Snapshots turn recurring activity into a developer journal.</span></div>
     </section>
 
     <section id="status" class="status hidden" aria-live="polite"></section>
@@ -102,5 +103,6 @@
   <script type="module" src="/access.js"></script>
   <script type="module" src="/client-report.js"></script>
   <script type="module" src="/workspace.js"></script>
+  <script type="module" src="/pro-max.js"></script>
 </body>
 </html>
