@@ -12,6 +12,10 @@ function cacheTtlMs(env = process.env) {
   return Math.max(5_000, Math.min(10 * 60_000, Number(env.REVENUECAT_CACHE_TTL_MS || 60_000)));
 }
 
+function timeoutMs(env = process.env) {
+  return Math.max(1_000, Math.min(30_000, Number(env.REVENUECAT_TIMEOUT_MS || 8_000)));
+}
+
 export function revenueCatConfig(env = process.env) {
   const apiKeyConfigured = Boolean(value(env, 'REVENUECAT_API_KEY'));
   const purchaseLinkUrl = value(env, 'REVENUECAT_PURCHASE_LINK_URL').replace(/\/+$/, '');
@@ -22,7 +26,7 @@ export function revenueCatConfig(env = process.env) {
     billingEngine: 'paddle',
     configured: apiKeyConfigured && Boolean(purchaseLinkUrl),
     entitlementConfigured: apiKeyConfigured,
-    checkoutConfigured: Boolean(purchaseLinkUrl),
+    checkoutConfigured: apiKeyConfigured && Boolean(purchaseLinkUrl),
     portalConfigured: apiKeyConfigured,
     webhookConfigured: webhookAuthConfigured,
     apiKeyConfigured,
@@ -53,20 +57,29 @@ async function fetchCustomer(workspaceId, env = process.env, { fresh = false } =
   const cached = customerCache.get(appUserId);
   if (!fresh && cached && cached.expiresAt > Date.now()) return cached.value;
 
-  const response = await fetch(`${API_ROOT}/subscribers/${encodeURIComponent(appUserId)}`, {
-    headers: {
-      Authorization: `Bearer ${value(env, 'REVENUECAT_API_KEY')}`,
-      'Content-Type': 'application/json',
-      'User-Agent': 'dev30/1.0',
-    },
-  });
-  if (!response.ok) {
-    const text = await response.text().catch(() => '');
-    throw Object.assign(new Error(`RevenueCat customer lookup failed (${response.status}): ${text.slice(0, 240)}`), { status: 502, code: 'revenuecat_error' });
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs(env));
+  try {
+    const response = await fetch(`${API_ROOT}/subscribers/${encodeURIComponent(appUserId)}`, {
+      headers: {
+        Authorization: `Bearer ${value(env, 'REVENUECAT_API_KEY')}`,
+        'Content-Type': 'application/json',
+        'User-Agent': 'dev30/1.1',
+      },
+      signal: controller.signal,
+    });
+    if (!response.ok) {
+      throw Object.assign(new Error(`RevenueCat customer lookup failed (${response.status}).`), { status: 502, code: 'revenuecat_error' });
+    }
+    const payload = await response.json();
+    customerCache.set(appUserId, { value: payload, expiresAt: Date.now() + cacheTtlMs(env) });
+    return payload;
+  } catch (error) {
+    if (error?.name === 'AbortError') throw Object.assign(new Error('RevenueCat customer lookup timed out.'), { status: 504, code: 'revenuecat_error' });
+    throw error;
+  } finally {
+    clearTimeout(timeout);
   }
-  const payload = await response.json();
-  customerCache.set(appUserId, { value: payload, expiresAt: Date.now() + cacheTtlMs(env) });
-  return payload;
 }
 
 export async function revenueCatPlan(workspaceId, env = process.env, options = {}) {
@@ -88,13 +101,12 @@ export async function revenueCatPlan(workspaceId, env = process.env, options = {
 
 export async function createCheckoutSession({ workspaceId, email = null }, env = process.env) {
   const config = revenueCatConfig(env);
-  if (!config.checkoutConfigured) {
+  if (!config.configured) {
     throw Object.assign(new Error('RevenueCat/Paddle checkout is not configured.'), { status: 503, code: 'billing_not_configured' });
   }
   const appUserId = revenueCatAppUserId(workspaceId);
   const url = new URL(`${config.purchaseLinkUrl}/${encodeURIComponent(appUserId)}`);
   if (email) url.searchParams.set('email', String(email));
-  url.searchParams.set('skip_purchase_success', 'true');
   return { id: null, provider: 'revenuecat', billingEngine: 'paddle', url: url.toString() };
 }
 
@@ -129,4 +141,4 @@ export function applyRevenueCatWebhook(payload) {
   return { handled: Boolean(appUserId), appUserId };
 }
 
-export const __revenueCatTest = { entitlementActive, safeEqual, cacheTtlMs };
+export const __revenueCatTest = { entitlementActive, safeEqual, cacheTtlMs, timeoutMs };
