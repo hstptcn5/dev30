@@ -64,7 +64,7 @@ test('snapshot series keys isolate private workspaces while public history stays
   assert.equal(publicA, publicB);
 });
 
-test('Supabase readiness probes all persistence tables without sending sb_secret as a bearer JWT', async () => {
+test('Supabase readiness probes every hosted persistence table without sending sb_secret as a bearer JWT', async () => {
   const beforeEnv = {
     backend: process.env.DEV30_STORAGE_BACKEND,
     url: process.env.SUPABASE_URL,
@@ -85,7 +85,10 @@ test('Supabase readiness probes all persistence tables without sending sb_secret
   try {
     const ready = await storageReadiness();
     assert.equal(ready.ready, true);
-    assert.equal(calls.length, 3);
+    const expectedTables = Object.values(__storageTest.TABLES).sort();
+    assert.equal(calls.length, expectedTables.length);
+    const calledTables = calls.map((call) => new URL(call.url).pathname.split('/').pop()).sort();
+    assert.deepEqual(calledTables, expectedTables);
     for (const call of calls) {
       assert.equal(call.options.headers.apikey, 'sb_secret_current');
       assert.equal('Authorization' in call.options.headers, false);
