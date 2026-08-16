@@ -4,7 +4,9 @@ const accountNote = document.querySelector('#account-note');
 function compactConnectedAccount() {
   if (!accountPanel || !accountNote || accountPanel.classList.contains('hidden')) return;
   const match = accountNote.textContent.match(/(\d+)\s+private repos available/i);
-  if (match) accountNote.textContent = `${match[1]} private repos available`;
+  if (!match) return;
+  const compact = `${match[1]} private repos available`;
+  if (accountNote.textContent !== compact) accountNote.textContent = compact;
 }
 
 function prioritizeWorkspaceLatestActivity() {
