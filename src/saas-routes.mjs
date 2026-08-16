@@ -9,6 +9,7 @@ import { billingConfig, createCheckoutSession, createPortalSession, verifyStripe
 import { emailConfig, renderStakeholderEmail, sendEmail } from './email.mjs';
 import { consumeEntitlement, entitlementSnapshot, quotaError } from './entitlements.mjs';
 import { nextScheduledRun, schedulePayload } from './schedule.mjs';
+import { destroySession } from './session.mjs';
 import {
   claimDueSchedules,
   completeSchedule,
@@ -195,6 +196,11 @@ export function createSaasRoutes(deps) {
 
   return async function handleSaasRoute(req, res, url) {
     try {
+      if (req.method === 'POST' && url.pathname === '/api/disconnect') {
+        const clearCookie = await destroySession(req);
+        return sendJson(res, 200, { ok: true, disconnected: true }, { 'Set-Cookie': clearCookie }), true;
+      }
+
       if (req.method === 'GET' && url.pathname === '/api/workspace-settings') {
         const auth = await deps.resolveAuth(req);
         if (!auth) return sendJson(res, 401, { error: 'Connect GitHub to open workspace settings.' }), true;
