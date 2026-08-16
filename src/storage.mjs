@@ -48,18 +48,25 @@ function filter(value) {
   return `eq.${String(value)}`;
 }
 
+function supabaseHeaders(secret) {
+  const headers = {
+    Accept: 'application/json',
+    apikey: secret,
+    'User-Agent': 'dev30/0.8-storage',
+  };
+  // Current sb_secret_* keys are opaque API keys and must not be treated as JWTs.
+  // Legacy service_role keys are JWTs and still support Authorization: Bearer.
+  if (!secret.startsWith('sb_secret_')) headers.Authorization = `Bearer ${secret}`;
+  return headers;
+}
+
 async function request(table, { method = 'GET', params = {}, body = null, prefer = null } = {}) {
   const { url: baseUrl, secret } = requireSupabaseConfig();
   const url = new URL(`${baseUrl}/rest/v1/${table}`);
   for (const [key, value] of Object.entries(params)) {
     if (value !== undefined && value !== null) url.searchParams.set(key, String(value));
   }
-  const headers = {
-    Accept: 'application/json',
-    apikey: secret,
-    Authorization: `Bearer ${secret}`,
-    'User-Agent': 'dev30/0.8-storage',
-  };
+  const headers = supabaseHeaders(secret);
   if (body !== null) headers['Content-Type'] = 'application/json';
   if (prefer) headers.Prefer = prefer;
 
@@ -222,7 +229,7 @@ export async function remoteSaveClientReport(saved) {
     body: {
       id: saved.id,
       workspace_id: saved.workspaceId || 'public',
-      username: saved.username,
+      username: String(saved.username || '').toLowerCase(),
       include_private: Boolean(saved.includePrivate),
       shareable: Boolean(saved.shareable),
       signature: saved.signature,
@@ -280,4 +287,4 @@ export async function storageReadiness() {
   return { ...config, ready: true, tables };
 }
 
-export const __storageTest = { filter, snapshotSeriesKey, normalizeLimit };
+export const __storageTest = { filter, snapshotSeriesKey, normalizeLimit, supabaseHeaders };
