@@ -1,5 +1,6 @@
 import { normalizeReport } from './analyzer.mjs';
 import { deterministicDeltaNarrative } from './history.mjs';
+import { recordAiUsage } from './ai-telemetry.mjs';
 
 const API_URL = 'https://api.deepseek.com/chat/completions';
 
@@ -70,7 +71,7 @@ function systemPrompt(locale, days) {
 export async function synthesizeWithDeepSeek(dataset, fallback, { locale = 'en' } = {}) {
   const apiKey = process.env.DEEPSEEK_API_KEY;
   if (!apiKey) {
-    return { report: fallback, mode: 'deterministic', model: null, notice: 'DEEPSEEK_API_KEY is not configured.' };
+    return { report: fallback, mode: 'deterministic', model: null, notice: 'DEEPSEEK_API_KEY is not configured.', usage: null };
   }
 
   const model = process.env.DEEPSEEK_MODEL || 'deepseek-v4-flash';
@@ -105,6 +106,7 @@ export async function synthesizeWithDeepSeek(dataset, fallback, { locale = 'en' 
     }
 
     const payload = await response.json();
+    const telemetry = recordAiUsage(payload, { operation: 'analysis', model });
     const content = payload?.choices?.[0]?.message?.content;
     if (!content) throw new Error('DeepSeek returned an empty response.');
     const parsed = JSON.parse(content);
@@ -113,6 +115,7 @@ export async function synthesizeWithDeepSeek(dataset, fallback, { locale = 'en' 
       mode: 'deepseek',
       model: payload.model || model,
       notice: null,
+      usage: telemetry,
     };
   } finally {
     clearTimeout(timeout);
@@ -167,6 +170,7 @@ export async function synthesizeDeltaWithDeepSeek(delta, { locale = 'en', days =
     });
     if (!response.ok) return fallback;
     const payload = await response.json();
+    recordAiUsage(payload, { operation: 'snapshot_delta', model });
     const content = payload?.choices?.[0]?.message?.content;
     if (!content) return fallback;
     return normalizeDeltaNarrative(JSON.parse(content), fallback);
