@@ -71,3 +71,20 @@ test('Netlify deployment keeps the Dev30 server module outside the function entr
   assert.match(fn, /path: \['\/api\/\*', '\/auth\/\*'\]/);
   assert.doesNotMatch(config, /SUPABASE_SECRET_KEY\s*=/);
 });
+
+test('hosted Analyze uses a background function and durable job polling', async () => {
+  const shell = await readFile(new URL('../public/index.html', import.meta.url), 'utf8');
+  const preload = await readFile(new URL('../public/background-analysis-preload.js', import.meta.url), 'utf8');
+  const mainFn = await readFile(new URL('../netlify/functions/dev30.mjs', import.meta.url), 'utf8');
+  const backgroundFn = await readFile(new URL('../netlify/functions/dev30-analyze-background.mjs', import.meta.url), 'utf8');
+  const statusFn = await readFile(new URL('../netlify/functions/dev30-analysis-job.mjs', import.meta.url), 'utf8');
+
+  assert.match(shell, /background-analysis-preload\.js[\s\S]*type="module" src="\/app\.js"/);
+  assert.match(preload, /nativeFetch\('\/api\/analyze-background'/);
+  assert.match(preload, /\/api\/analysis-job\//);
+  assert.match(preload, /content-type/);
+  assert.match(mainFn, /excludedPath: \['\/api\/analyze-background', '\/api\/analysis-job\/\*'\]/);
+  assert.match(backgroundFn, /background: true/);
+  assert.match(backgroundFn, /path: '\/api\/analyze-background'/);
+  assert.match(statusFn, /path: '\/api\/analysis-job\/:id'/);
+});
