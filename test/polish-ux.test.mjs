@@ -29,6 +29,7 @@ test('workspace polish makes latest activity the dominant surface', async () => 
 
 test('connected account copy is compacted without hiding private availability', async () => {
   const js = await read('public/polish.js');
-  assert.match(js, /private repos available/i);
-  assert.match(js, /accountNote\.textContent = `\$\{match\[1\]\} private repos available`/);
+  assert.match(js, /const compact = `\$\{match\[1\]\} private repos available`/);
+  assert.match(js, /accountNote\.textContent !== compact/);
+  assert.match(js, /accountNote\.textContent = compact/);
 });
