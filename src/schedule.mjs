@@ -52,6 +52,7 @@ export function schedulePayload(input, { workspaceId, username, after = new Date
   const hourLocal = Number(input.hourLocal);
   const audience = input.audience === 'founder' ? 'founder' : 'client';
   const days = [7, 30, 90].includes(Number(input.days)) ? Number(input.days) : 7;
+  const locale = input.locale === 'vi' ? 'vi' : 'en';
   if (!workspaceId || !username) throw new Error('A connected workspace is required.');
   if (!validEmail(email)) throw new Error('Enter a valid delivery email address.');
   if (!validTimezone(timezone)) throw new Error('Enter a valid IANA timezone.');
@@ -65,6 +66,7 @@ export function schedulePayload(input, { workspaceId, username, after = new Date
     hourLocal,
     audience,
     days,
+    locale,
     enabled: input.enabled !== false,
     nextRunAt,
   };
