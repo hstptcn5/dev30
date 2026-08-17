@@ -25,6 +25,26 @@
   to = "/index.html"
   status = 200
 
+[[redirects]]
+  from = "/pricing"
+  to = "/pricing.html"
+  status = 200
+
+[[redirects]]
+  from = "/privacy"
+  to = "/privacy.html"
+  status = 200
+
+[[redirects]]
+  from = "/terms"
+  to = "/terms.html"
+  status = 200
+
+[[redirects]]
+  from = "/refunds"
+  to = "/refunds.html"
+  status = 200
+
 [[headers]]
   for = "/*"
   [headers.values]
