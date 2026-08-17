@@ -15,6 +15,9 @@ This document tracks the path from the current hosted early-access product to th
 - Production GitHub App OAuth and workspace identity
 - Reader-first light UI and visual-richness pass
 - Commercial website surface: pricing, privacy, terms, refunds, operator attribution
+- Custom production domain `https://getdev30.xyz` connected to the Netlify site with HTTPS working
+- Paddle Sandbox checkout verified with a successful Dev30 Pro annual transaction
+- RevenueCat Sandbox customer verified with active Dev30 Pro entitlement for `github:<github-user-id>`
 
 ## Current launch plan
 
@@ -44,24 +47,31 @@ Product limits / paid capabilities:
 
 ## Remaining external commercial activation
 
-### 1. Paddle seller activation
+### 1. Custom-domain cutover
 
-- Create/sign in to the real Paddle seller account.
+- Set Netlify `APP_BASE_URL=https://getdev30.xyz`.
+- Set Netlify `GITHUB_OAUTH_CALLBACK_URL=https://getdev30.xyz/auth/github/callback`.
+- Add the new callback URL to the GitHub App while keeping the old Netlify callback temporarily during the cutover.
+- Change the GitHub App homepage to `https://getdev30.xyz` and setup URL to `https://getdev30.xyz/workspace`.
+- Verify connect, callback, workspace, fresh Analyze, public report, and background Analyze from the custom domain.
+- Keep the Netlify subdomain as a temporary fallback until the custom-domain flow is confirmed.
+
+### 2. Paddle seller activation
+
 - Complete identity verification as the applicable individual / sole-trader / business type.
-- Add `https://dev-30.netlify.app` for domain review.
+- Submit `https://getdev30.xyz` for production domain review.
 - If Paddle requests it, add the operator's legal sole-proprietor name alongside the public `hstptcn5` brand in the Terms.
 - Add a dedicated commercial support/privacy email before broad paid launch.
-- Create monthly and annual Dev30 Pro prices in Paddle.
+- Keep the existing live Dev30 Pro monthly and annual prices; do not recreate them for the domain migration.
 
-### 2. RevenueCat production resources
+### 3. RevenueCat production resources
 
-- Create/confirm the RevenueCat project.
-- Connect Paddle Billing.
-- Create entitlement `pro`.
-- Create monthly + annual web products/packages/offering.
-- Create a sandbox Web Purchase Link and test it first.
-- Create the production Web Purchase Link only after sandbox E2E is green.
+- Keep the existing Paddle Live web configuration.
+- Keep entitlement `pro` and the live monthly + annual products/packages/offering.
+- Update the production Purchase Link Terms URL to `https://getdev30.xyz/terms`.
+- Update the production success redirect to `https://getdev30.xyz/workspace`.
 - Configure a RevenueCat webhook authorization secret.
+- Put the live RevenueCat API key and production Purchase Link URL into Netlify only after the production purchase flow is ready to test.
 
 Netlify variables expected by the existing code:
 
@@ -78,25 +88,25 @@ The stable RevenueCat App User ID is the Dev30 workspace ID:
 github:<github-user-id>
 ```
 
-### 3. Payment E2E release gate
+### 4. Payment E2E release gate
 
-Sandbox test must prove:
+Sandbox checkout and entitlement activation are verified. Remaining lifecycle checks before paid beta:
 
 ```text
 Free GitHub user
 → Pricing / Upgrade
-→ RevenueCat Web Purchase Link
-→ Paddle sandbox checkout
+→ RevenueCat production Web Purchase Link
+→ Paddle live checkout
 → RevenueCat customer github:<id>
 → entitlement pro active
 → Dev30 opens private analysis
 → billing management URL works
-→ cancellation changes entitlement as expected
+→ cancellation changes renewal state as expected
 ```
 
-Do not publish a production purchase link until the sandbox loop is verified.
+Do not broaden paid launch until the live loop is verified with one intentional production purchase.
 
-### 4. Paid recurring-feature activation
+### 5. Paid recurring-feature activation
 
 Before advertising weekly email as production-complete:
 
@@ -113,7 +123,7 @@ Before advertising weekly email as production-complete:
 
 Reached when:
 
-- public commercial/legal pages are deployed
+- public commercial/legal pages are deployed on the custom domain
 - Paddle/RevenueCat sandbox purchase E2E passes
 - production domain review is accepted or ready to submit
 - no P0/P1 product regression is open
@@ -137,7 +147,7 @@ Do not broaden promotion until there is evidence of recurring value, such as use
 
 - Dedicated support/privacy email is not published yet.
 - Paddle seller verification and production domain review are external account steps.
-- RevenueCat/Paddle production products and purchase links do not exist until provisioned in their dashboards.
+- Production billing is not considered verified until one intentional live purchase and cancellation lifecycle test succeeds.
 - Resend and hosted cron remain optional/unconfigured until weekly email is intentionally activated.
 
 These are activation tasks, not missing product architecture.

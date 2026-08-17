@@ -24,6 +24,16 @@ test('main product exposes commercial identity and legal navigation', () => {
   assert.match(index, /early access/);
 });
 
+test('public commercial pages canonicalize to the custom production domain', () => {
+  assert.match(index, /rel="canonical" href="https:\/\/getdev30\.xyz\/"/);
+  assert.match(pricing, /rel="canonical" href="https:\/\/getdev30\.xyz\/pricing"/);
+  assert.match(privacy, /rel="canonical" href="https:\/\/getdev30\.xyz\/privacy"/);
+  assert.match(terms, /rel="canonical" href="https:\/\/getdev30\.xyz\/terms"/);
+  assert.match(refunds, /rel="canonical" href="https:\/\/getdev30\.xyz\/refunds"/);
+  assert.match(privacy, /hosted service at getdev30\.xyz/);
+  assert.doesNotMatch(privacy, /dev-30\.netlify\.app/);
+});
+
 test('pricing states the launch Free and Pro contract', () => {
   assert.match(pricing, /5 fresh analyses per month/);
   assert.match(pricing, /100 fresh analyses per month/);
