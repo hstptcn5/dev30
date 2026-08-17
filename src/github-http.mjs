@@ -1,5 +1,7 @@
 const RETRYABLE_STATUSES = new Set([429, 500, 502, 503, 504]);
 const DEFAULT_DELAYS_MS = Object.freeze([250, 750, 1500]);
+const GITHUB_HOSTS = new Set(['api.github.com', 'github.com']);
+const INSTALL_KEY = Symbol.for('dev30.githubFetchRetryInstalled');
 
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
@@ -13,6 +15,26 @@ function retryAfterMs(response) {
   const at = Date.parse(value);
   if (Number.isFinite(at)) return Math.max(0, Math.min(30_000, at - Date.now()));
   return null;
+}
+
+function githubPath(url) {
+  try {
+    const parsed = new URL(String(url));
+    return `${parsed.pathname}${parsed.search}`;
+  } catch {
+    return String(url);
+  }
+}
+
+function shouldRetryGitHubUrl(url) {
+  try {
+    const parsed = new URL(String(url));
+    if (!GITHUB_HOSTS.has(parsed.hostname)) return false;
+    if (parsed.hostname === 'github.com') return parsed.pathname.startsWith('/login/oauth/');
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 async function githubError(response, { method, path, attempt }) {
@@ -39,10 +61,11 @@ async function githubError(response, { method, path, attempt }) {
 }
 
 export async function githubRequest(url, options = {}, {
-  path = new URL(url).pathname,
+  path = githubPath(url),
   delaysMs = DEFAULT_DELAYS_MS,
   fetchImpl = globalThis.fetch,
   sleepImpl = sleep,
+  throwOnFinalResponse = true,
 } = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const attempts = Math.max(1, delaysMs.length + 1);
@@ -68,7 +91,11 @@ export async function githubRequest(url, options = {}, {
 
     if (response.ok) return response;
     lastError = await githubError(response, { method, path, attempt });
-    if (!RETRYABLE_STATUSES.has(response.status) || attempt >= attempts) throw lastError;
+    if (!RETRYABLE_STATUSES.has(response.status) || attempt >= attempts) {
+      if (throwOnFinalResponse) throw lastError;
+      console.error(lastError.message);
+      return response;
+    }
     const delay = retryAfterMs(response) ?? delaysMs[attempt - 1];
     await sleepImpl(delay);
   }
@@ -76,4 +103,26 @@ export async function githubRequest(url, options = {}, {
   throw lastError || new Error(`GitHub request failed ${method} ${path}.`);
 }
 
-export const __githubHttpTest = { retryAfterMs, RETRYABLE_STATUSES, DEFAULT_DELAYS_MS };
+export function installGitHubFetchRetry(target = globalThis) {
+  if (!target?.fetch || target[INSTALL_KEY]) return false;
+  const nativeFetch = target.fetch.bind(target);
+  target.fetch = async (input, init = {}) => {
+    const url = input instanceof Request ? input.url : String(input);
+    if (!shouldRetryGitHubUrl(url)) return nativeFetch(input, init);
+    return githubRequest(input, init, {
+      path: githubPath(url),
+      fetchImpl: nativeFetch,
+      throwOnFinalResponse: false,
+    });
+  };
+  target[INSTALL_KEY] = true;
+  return true;
+}
+
+export const __githubHttpTest = {
+  retryAfterMs,
+  shouldRetryGitHubUrl,
+  githubPath,
+  RETRYABLE_STATUSES,
+  DEFAULT_DELAYS_MS,
+};
