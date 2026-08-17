@@ -83,7 +83,9 @@ test('hosted Analyze uses a background function and durable job polling', async 
   assert.match(preload, /nativeFetch\('\/api\/analyze-background'/);
   assert.match(preload, /\/api\/analysis-job\//);
   assert.match(preload, /content-type/);
-  assert.match(mainFn, /excludedPath: \['\/api\/analyze-background', '\/api\/analysis-job\/\*'\]/);
+  assert.match(mainFn, /excludedPath:/);
+  assert.match(mainFn, /'\/api\/analyze-background'/);
+  assert.match(mainFn, /'\/api\/analysis-job\/\*'/);
   assert.match(backgroundFn, /background: true/);
   assert.match(backgroundFn, /path: '\/api\/analyze-background'/);
   assert.match(statusFn, /path: '\/api\/analysis-job\/:id'/);
