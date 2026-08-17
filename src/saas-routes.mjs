@@ -94,11 +94,6 @@ async function runOneSchedule(schedule, deps) {
 
   let savedReport = receipt?.reportId ? await getClientReportPersistent(receipt.reportId) : null;
   if (!savedReport) {
-    const scheduledUsage = await consumeEntitlement(schedule.workspaceId, 'scheduled_run');
-    if (!scheduledUsage.accepted) throw quotaError('scheduled_run', scheduledUsage);
-    const reportUsage = await consumeEntitlement(schedule.workspaceId, 'report');
-    if (!reportUsage.accepted) throw quotaError('report', reportUsage);
-
     const locale = schedule.locale === 'vi' ? 'vi' : 'en';
     const { dataset, payload } = await deps.withAuth(auth, () => deps.buildAnalysis({
       username: schedule.username,
@@ -121,6 +116,11 @@ async function runOneSchedule(schedule, deps) {
       idempotencyKey,
       lastError: null,
     });
+
+    const scheduledUsage = await consumeEntitlement(schedule.workspaceId, 'scheduled_run');
+    if (!scheduledUsage.accepted) throw quotaError('scheduled_run', scheduledUsage);
+    const reportUsage = await consumeEntitlement(schedule.workspaceId, 'report');
+    if (!reportUsage.accepted) throw quotaError('report', reportUsage);
   }
 
   if (receipt?.status === 'sent') {
