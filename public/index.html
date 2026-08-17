@@ -15,16 +15,18 @@
   <link rel="stylesheet" href="/polish.css" />
   <link rel="stylesheet" href="/monetization.css" />
   <link rel="stylesheet" href="/richness.css" />
+  <link rel="stylesheet" href="/commercial.css" />
 </head>
 <body>
   <div class="ambient ambient-a"></div>
   <div class="ambient ambient-b"></div>
   <main class="shell">
     <header class="topbar">
-      <a class="brand" href="/" aria-label="Dev30 home"><span class="brand-mark">D30</span><span>Dev30</span></a>
+      <a class="brand" href="/" aria-label="Dev30 home"><span class="brand-mark" aria-hidden="true">D30</span><span class="brand-word">Dev30</span></a>
       <nav class="top-actions" aria-label="Dev30 navigation">
+        <a class="top-link" href="/pricing">Pricing</a>
         <a id="workspace-nav" class="top-link hidden" href="/workspace">Workspace</a>
-        <span class="beta">pilot</span>
+        <span class="beta">early access</span>
         <span id="runtime-badge" class="runtime-badge">checking…</span>
       </nav>
     </header>
@@ -99,9 +101,18 @@
     <section id="status" class="status hidden" aria-live="polite"></section>
     <section id="report" class="report hidden" aria-live="polite"></section>
 
-    <footer>
-      <span>Dev30</span>
-      <span>Understand the work. Verify the evidence.</span>
+    <footer class="site-footer">
+      <div class="footer-owner">
+        <strong>© 2026 Dev30 · Built &amp; operated by <a href="https://github.com/hstptcn5" rel="noreferrer">hstptcn5</a></strong>
+        <span>Evidence-backed GitHub work briefings. Understand the work. Verify the evidence.</span>
+      </div>
+      <nav class="footer-links" aria-label="Legal and product links">
+        <a href="/pricing">Pricing</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/refunds">Refunds</a>
+        <a href="https://github.com/hstptcn5/dev30" rel="noreferrer">GitHub</a>
+      </nav>
     </footer>
   </main>
   <script src="/monetization-preload.js"></script>
