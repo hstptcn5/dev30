@@ -65,7 +65,7 @@ export async function githubRequest(url, options = {}, {
   delaysMs = DEFAULT_DELAYS_MS,
   fetchImpl = globalThis.fetch,
   sleepImpl = sleep,
-  throwOnFinalResponse = true,
+  throwOnNonRetryable = true,
 } = {}) {
   const method = String(options.method || 'GET').toUpperCase();
   const attempts = Math.max(1, delaysMs.length + 1);
@@ -91,11 +91,11 @@ export async function githubRequest(url, options = {}, {
 
     if (response.ok) return response;
     lastError = await githubError(response, { method, path, attempt });
-    if (!RETRYABLE_STATUSES.has(response.status) || attempt >= attempts) {
-      if (throwOnFinalResponse) throw lastError;
-      console.error(lastError.message);
+    if (!RETRYABLE_STATUSES.has(response.status)) {
+      if (throwOnNonRetryable) throw lastError;
       return response;
     }
+    if (attempt >= attempts) throw lastError;
     const delay = retryAfterMs(response) ?? delaysMs[attempt - 1];
     await sleepImpl(delay);
   }
@@ -107,12 +107,12 @@ export function installGitHubFetchRetry(target = globalThis) {
   if (!target?.fetch || target[INSTALL_KEY]) return false;
   const nativeFetch = target.fetch.bind(target);
   target.fetch = async (input, init = {}) => {
-    const url = input instanceof Request ? input.url : String(input);
+    const url = typeof Request !== 'undefined' && input instanceof Request ? input.url : String(input);
     if (!shouldRetryGitHubUrl(url)) return nativeFetch(input, init);
     return githubRequest(input, init, {
       path: githubPath(url),
       fetchImpl: nativeFetch,
-      throwOnFinalResponse: false,
+      throwOnNonRetryable: false,
     });
   };
   target[INSTALL_KEY] = true;
