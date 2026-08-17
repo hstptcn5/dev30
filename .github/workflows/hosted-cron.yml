@@ -15,7 +15,7 @@ jobs:
       DEV30_HOSTED_URL: ${{ secrets.DEV30_HOSTED_URL }}
       DEV30_CRON_SECRET: ${{ secrets.DEV30_CRON_SECRET }}
     steps:
-      - name: Run due Dev30 schedules
+      - name: Enqueue due Dev30 schedules
         shell: bash
         run: |
           set -euo pipefail
@@ -27,4 +27,4 @@ jobs:
             --retry 2 --retry-all-errors \
             -X POST \
             -H "Authorization: Bearer ${DEV30_CRON_SECRET}" \
-            "${DEV30_HOSTED_URL%/}/api/internal/run-due"
+            "${DEV30_HOSTED_URL%/}/api/internal/run-due-background"
