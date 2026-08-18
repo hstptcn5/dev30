@@ -8,7 +8,7 @@ test('console UI is loaded as the final presentation layer without replacing Dev
   const html = await read('public/index.html');
   assert.match(html, /console-ui\.css[\s\S]*console-ui-polish\.css/);
   assert.match(html, /app\.js[\s\S]*workspace-journal\.js[\s\S]*console-ui-preload\.js[\s\S]*workspace\.js/);
-  assert.match(html, /portable-output\.js[\s\S]*console-ui\.js/);
+  assert.match(html, /portable-output\.js[\s\S]*console-ui\.js[\s\S]*console-ui-route\.js/);
   assert.match(html, /monetization\.js/);
 });
 
@@ -42,6 +42,16 @@ test('workspace console is derived from saved snapshots and actual entitlement s
   assert.match(source, /console-free-workspace/);
   assert.match(source, /UNLOCK_WEEKLY_UPDATES/);
   assert.match(source, /hideDuplicateSnapshotList/);
+});
+
+test('shared client and founder reports become stakeholder artifacts without changing report generation', async () => {
+  const route = await read('public/console-ui-route.js');
+  assert.match(route, /STAKEHOLDER_ARTIFACT/);
+  assert.match(route, /\^\\\/r\\\//);
+  assert.match(route, /data-console-href=\"#report\"/);
+  assert.doesNotMatch(route, /\/api\//);
+  const report = await read('public/client-report.js');
+  assert.match(report, /\/api\/client-report/);
 });
 
 test('portable output is presented as a Stitch-style hardware modal without changing export logic', async () => {
