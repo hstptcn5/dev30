@@ -1,0 +1,90 @@
+body.console-ui.report-open .hero,
+body.console-ui.report-open #visual-activity-pipeline,
+body.console-ui.workspace-view #visual-journal-stage,
+body.console-ui.workspace-view .visual-journal-stage {
+  display: none !important;
+}
+
+body.console-ui #visual-activity-pipeline {
+  display: none !important;
+}
+
+body.console-ui #visual-evidence-map {
+  border: 2px solid var(--console-ink) !important;
+  border-radius: 0 !important;
+  background: var(--console-canvas) !important;
+  box-shadow: var(--console-shadow-sm) !important;
+}
+
+body.console-ui #visual-evidence-map .visual-map-canvas,
+body.console-ui #visual-evidence-map .visual-map-center,
+body.console-ui #visual-evidence-map .visual-map-node {
+  border-radius: 0 !important;
+}
+
+body.console-ui #visual-evidence-map .visual-map-center,
+body.console-ui #visual-evidence-map .visual-map-node {
+  border: 2px solid var(--console-ink) !important;
+  box-shadow: var(--console-shadow-sm) !important;
+}
+
+body.console-ui.report-open #report {
+  margin-top: 38px;
+}
+
+body.console-ui.workspace-view #report {
+  margin-top: 28px;
+}
+
+body.console-ui .pixel-analysis-scanner,
+body.console-ui .pixel-scanner,
+body.console-ui .pixel-brand-bot,
+body.console-ui .visual-live-badge {
+  display: none !important;
+}
+
+body.console-ui .portable-menu-panel,
+body.console-ui .portable-toolbar,
+body.console-ui .portable-output-note {
+  border-radius: 0 !important;
+}
+
+body.console-ui .portable-menu-panel {
+  border: 2px solid var(--console-ink) !important;
+  background: var(--console-canvas) !important;
+  box-shadow: var(--console-shadow) !important;
+}
+
+body.console-ui .portable-menu-panel button {
+  border-radius: 0 !important;
+}
+
+body.console-ui .workspace-callout,
+body.console-ui .workspace-soft-note,
+body.console-ui .schedule-status,
+body.console-ui .status,
+body.console-ui .notice {
+  border-radius: 0 !important;
+}
+
+body.console-ui .weekly-preview-card {
+  border-radius: 0 !important;
+  border: 2px solid var(--console-ink) !important;
+  box-shadow: var(--console-shadow-sm) !important;
+}
+
+body.console-ui.console-free-workspace #automation > .workspace-section-head + .workspace-form,
+body.console-ui.console-free-workspace #automation .workspace-form,
+body.console-ui.console-free-workspace #automation .schedule-status {
+  display: none !important;
+}
+
+body.console-ui .commercial-status {
+  border-radius: 0 !important;
+}
+
+@media (max-width: 760px) {
+  body.console-ui #visual-evidence-map {
+    overflow: hidden;
+  }
+}
