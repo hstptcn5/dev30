@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import test from 'node:test';
 import { isQuietSnapshot, saveSlotLabel, scannerPhaseForElapsed } from '../public/pixel-personality.js';
 
-test('scanner animation cycles labels without claiming separate server jobs', () => {
+test('scanner animation cycles product-facing visual stages', () => {
   assert.deepEqual(scannerPhaseForElapsed(0), {
     index: 0,
     code: 'SCAN_GITHUB',
@@ -41,7 +41,7 @@ test('pixel identity stays in accents and interaction moments', async () => {
   assert.match(source, /SNAPSHOT_SAVED/);
   assert.match(source, /WEEKLY_TX/);
   assert.match(source, /pixel-save-slot/);
-  assert.match(source, /These labels show the current scan animation, not separate server jobs/);
+  assert.match(source, /Progress labels are visual scan stages while the analysis runs/);
   assert.match(css, /prefers-reduced-motion:reduce/);
   assert.doesNotMatch(css, /@import|fonts\.googleapis|url\(https?:/i);
 });
