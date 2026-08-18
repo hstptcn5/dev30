@@ -41,13 +41,21 @@ export function changeSummary(latest, previous) {
   if (!latest || !previous) return { kind: 'waiting', title: 'Waiting for a second snapshot', detail: 'Run another analysis after more GitHub activity to compare meaningful change.' };
   const currentRepo = latest.mainFocus?.repo || '';
   const previousRepo = previous.mainFocus?.repo || '';
-  if (isMeaninglessFocus(currentRepo) && isMeaninglessFocus(previousRepo)) {
+  const currentEmpty = isMeaninglessFocus(currentRepo);
+  const previousEmpty = isMeaninglessFocus(previousRepo);
+  if (currentEmpty && previousEmpty) {
     return { kind: 'unchanged', title: 'No meaningful change since the previous snapshot', detail: 'Both windows show no meaningful development activity to compare.' };
   }
-  if (currentRepo && previousRepo && currentRepo !== previousRepo) {
+  if (currentEmpty && !previousEmpty) {
+    return { kind: 'quiet', title: 'No current development focus detected', detail: `Previous snapshot centered on ${previousRepo}; the current window has no meaningful development activity.` };
+  }
+  if (!currentEmpty && previousEmpty) {
+    return { kind: 'emerged', title: `New focus: ${currentRepo}`, detail: 'The previous snapshot had no meaningful development focus.' };
+  }
+  if (currentRepo !== previousRepo) {
     return { kind: 'moved', title: `Focus moved to ${currentRepo}`, detail: `Previous snapshot centered on ${previousRepo}.` };
   }
-  if (currentRepo && !isMeaninglessFocus(currentRepo)) {
+  if (currentRepo) {
     return { kind: 'steady', title: `Focus still centers on ${currentRepo}`, detail: 'The journal is building a comparable history around the same focus.' };
   }
   return { kind: 'growing', title: 'Your journal is building comparable history', detail: 'Run another analysis after meaningful activity to make the change clearer.' };
@@ -63,14 +71,15 @@ function compactLanding() {
   $('.visual-live-badge')?.classList.add('ui-trim-hidden');
   $('.example-preview')?.classList.add('ui-trim-hidden');
   $('.value-strip')?.classList.add('ui-trim-hidden');
+  $('.example-link')?.classList.add('ui-trim-hidden');
 
   const pipeline = $('#visual-activity-pipeline');
   if (!pipeline || $('#ui-compact-example')) return;
   const example = E('aside', 'ui-compact-example');
   example.id = 'ui-compact-example';
   const copy = E('div');
-  copy.append(E('strong', '', 'Want to see a real Dev30 briefing?'), E('span', '', 'Open the GoFlow example instead of reading another feature section.'));
-  const button = E('button', 'ui-inline-action', 'Open example briefing →');
+  copy.append(E('strong', '', 'Want to see a real Dev30 briefing?'), E('span', '', 'See what an evidence-backed briefing looks like with a real public example.'));
+  const button = E('button', 'ui-inline-action', 'Open GoFlow example →');
   button.type = 'button';
   button.onclick = () => $('.example-link')?.click();
   example.append(copy, button);
