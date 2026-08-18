@@ -22,6 +22,28 @@ function requestMethod(input, init) {
   return String(init?.method || input?.method || 'GET').toUpperCase();
 }
 
+async function jsonIfOk(promise) {
+  const response = await promise.catch(() => null);
+  if (!response?.ok) return null;
+  return response.json().catch(() => null);
+}
+
+function publicHistoryUrl(origin, workspace, locale) {
+  const url = new URL('/api/history', origin);
+  url.searchParams.set('username', workspace.viewer.login);
+  url.searchParams.set('days', String(workspace.days || 30));
+  url.searchParams.set('locale', locale);
+  url.searchParams.set('includePrivate', 'false');
+  return url;
+}
+
+function alternateWorkspaceUrl(origin, workspace, locale) {
+  const url = new URL('/api/workspace', origin);
+  url.searchParams.set('days', String(workspace.days || 30));
+  url.searchParams.set('locale', locale);
+  return url;
+}
+
 export function installWorkspaceJournalFetch(windowObject = globalThis.window) {
   if (!windowObject?.fetch || !windowObject?.location || windowObject.location.pathname !== '/workspace') return false;
   if (windowObject.__dev30WorkspaceJournalFetchInstalled) return true;
@@ -36,25 +58,34 @@ export function installWorkspaceJournalFetch(windowObject = globalThis.window) {
     const workspace = await response.clone().json().catch(() => null);
     if (!workspace?.viewer?.login) return response;
 
-    const historyUrl = new URL('/api/history', windowObject.location.origin);
-    historyUrl.searchParams.set('username', workspace.viewer.login);
-    historyUrl.searchParams.set('days', String(workspace.days || 30));
-    historyUrl.searchParams.set('locale', workspace.locale === 'vi' ? 'vi' : 'en');
-    historyUrl.searchParams.set('includePrivate', 'false');
+    const currentLocale = workspace.locale === 'vi' ? 'vi' : 'en';
+    const alternateLocale = currentLocale === 'vi' ? 'en' : 'vi';
+    const [alternateWorkspace, currentPublic, alternatePublic] = await Promise.all([
+      jsonIfOk(nativeFetch(alternateWorkspaceUrl(windowObject.location.origin, workspace, alternateLocale), { cache: 'no-store' })),
+      jsonIfOk(nativeFetch(publicHistoryUrl(windowObject.location.origin, workspace, currentLocale), { cache: 'no-store' })),
+      jsonIfOk(nativeFetch(publicHistoryUrl(windowObject.location.origin, workspace, alternateLocale), { cache: 'no-store' })),
+    ]);
 
-    const publicResponse = await nativeFetch(historyUrl, { cache: 'no-store' }).catch(() => null);
-    if (!publicResponse?.ok) return response;
-    const publicHistory = await publicResponse.json().catch(() => null);
-    if (!Array.isArray(publicHistory?.entries)) return response;
+    const workspaceSnapshots = [
+      ...(workspace.snapshots || []),
+      ...(alternateWorkspace?.snapshots || []),
+    ];
+    const publicSnapshots = [
+      ...(currentPublic?.entries || []),
+      ...(alternatePublic?.entries || []),
+    ];
+    if (!workspaceSnapshots.length && !publicSnapshots.length) return response;
 
     const payload = {
       ...workspace,
-      snapshots: mergeWorkspaceSnapshots(workspace.snapshots || [], publicHistory.entries, 12),
-      publicSnapshotsIncluded: true,
+      snapshots: mergeWorkspaceSnapshots(workspaceSnapshots, publicSnapshots, 12),
+      publicSnapshotsIncluded: publicSnapshots.length > 0,
+      journalLocalesIncluded: [currentLocale, alternateLocale],
     };
     const headers = new Headers(response.headers);
     headers.set('Content-Type', 'application/json; charset=utf-8');
     headers.delete('Content-Length');
+    headers.delete('Content-Encoding');
     return new Response(JSON.stringify(payload), {
       status: response.status,
       statusText: response.statusText,
