@@ -10,6 +10,7 @@
   <link rel="stylesheet" href="/styles.css" />
   <link rel="stylesheet" href="/light-theme.css" />
   <link rel="stylesheet" href="/commercial.css" />
+  <link rel="stylesheet" href="/console-ui.css" />
 </head>
 <body>
   <div class="commercial-shell">
@@ -41,8 +42,9 @@
             <div class="price-feature">Evidence-backed claims</div>
             <div class="price-feature">Saved public report reading</div>
             <div class="price-feature">Snapshot comparison when meaningful activity changes</div>
+            <div class="price-feature">Portable PDF, Markdown, JSON and Pixel Card exports</div>
           </div>
-          <div class="price-actions"><a class="commercial-secondary" href="/">Analyze a GitHub account</a></div>
+          <div class="price-actions"><a class="commercial-secondary" href="/">Start free analysis</a></div>
         </article>
 
         <article class="price-card pro">
@@ -59,7 +61,7 @@
           </div>
           <div class="price-actions">
             <button class="commercial-primary" type="button" data-commercial-upgrade>Upgrade to Pro</button>
-            <a class="commercial-secondary" href="/workspace">Open workspace</a>
+            <a class="commercial-secondary" href="/workspace">Open journal</a>
           </div>
           <div id="commercial-status" class="commercial-status hidden" aria-live="polite"></div>
         </article>
@@ -86,5 +88,6 @@
     </footer>
   </div>
   <script type="module" src="/commercial.js"></script>
+  <script type="module" src="/console-ui.js"></script>
 </body>
 </html>
