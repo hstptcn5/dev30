@@ -215,6 +215,7 @@ let workspaceSimplifyLoading = false;
 async function simplifyWorkspace() {
   if (location.pathname !== '/workspace' || workspaceSimplifyLoading) return;
   if (!$('.workspace-hero') || !$('.visual-journal-stage') || !$('#automation')) return;
+  if (document.body.dataset.uiSimplified === 'true' && $('.ui-latest-meta') && $('.visual-weekly-preview')) return;
   workspaceSimplifyLoading = true;
   try {
     const [workspaceResponse, settingsResponse] = await Promise.all([
