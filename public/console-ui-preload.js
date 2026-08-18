@@ -4,6 +4,7 @@
   const nativeFetch = window.fetch.bind(window);
   let workspace = null;
   let settings = null;
+  let workspaceTimer = null;
 
   function requestPath(input) {
     try {
@@ -25,9 +26,17 @@
 
   function emitWorkspace() {
     if (!workspace || !settings) return;
-    queueMicrotask(() => document.dispatchEvent(new CustomEvent('dev30:workspace-rendered', {
-      detail: { workspace, settings },
-    })));
+    if (workspaceTimer) clearTimeout(workspaceTimer);
+    workspaceTimer = setTimeout(() => {
+      workspaceTimer = null;
+      document.dispatchEvent(new CustomEvent('dev30:workspace-rendered', {
+        detail: { workspace, settings },
+      }));
+    }, 0);
+  }
+
+  function emitAnalysis(payload) {
+    setTimeout(() => document.dispatchEvent(new CustomEvent('dev30:analysis-rendered', { detail: payload })), 0);
   }
 
   window.fetch = async function dev30ConsoleFetch(input, init = {}) {
@@ -37,7 +46,7 @@
 
     if (path === '/api/analyze' && requestMethod === 'POST') {
       const payload = await readClone(response);
-      if (payload) queueMicrotask(() => document.dispatchEvent(new CustomEvent('dev30:analysis-rendered', { detail: payload })));
+      if (payload) emitAnalysis(payload);
     } else if (path === '/api/workspace' && requestMethod === 'GET') {
       const payload = await readClone(response);
       if (payload) { workspace = payload; emitWorkspace(); }
