@@ -43,6 +43,32 @@ body.console-ui .visual-live-badge {
   display: none !important;
 }
 
+body.console-ui .console-loading-rail {
+  align-items: stretch;
+  gap: 8px;
+}
+
+body.console-ui .console-loading-step {
+  position: relative;
+  min-height: 34px;
+  padding-top: 18px;
+  background: #fff;
+}
+
+body.console-ui .console-loading-step::after {
+  content: attr(title);
+  position: absolute;
+  left: 5px;
+  right: 5px;
+  top: 4px;
+  overflow: hidden;
+  color: var(--console-ink);
+  font: 900 8px/1 ui-monospace, monospace;
+  letter-spacing: .02em;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 body.console-ui .portable-menu,
 body.console-ui .portable-menu-panel,
 body.console-ui .portable-toolbar,
@@ -183,6 +209,11 @@ body.console-ui .commercial-status {
 @media (max-width: 760px) {
   body.console-ui #visual-evidence-map {
     overflow: hidden;
+  }
+
+  body.console-ui .console-loading-rail {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
   }
 
   body.console-ui .portable-menu[open] .portable-menu-panel {
