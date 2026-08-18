@@ -6,10 +6,9 @@ const read = (path) => readFile(new URL(`../${path}`, import.meta.url), 'utf8');
 
 test('console UI is loaded as the final presentation layer without replacing Dev30 runtime scripts', async () => {
   const html = await read('public/index.html');
-  assert.match(html, /console-ui\.css/);
-  assert.match(html, /background-analysis-preload\.js[\s\S]*console-ui-preload\.js[\s\S]*app\.js/);
+  assert.match(html, /console-ui\.css[\s\S]*console-ui-polish\.css/);
+  assert.match(html, /app\.js[\s\S]*workspace-journal\.js[\s\S]*console-ui-preload\.js[\s\S]*workspace\.js/);
   assert.match(html, /portable-output\.js[\s\S]*console-ui\.js/);
-  assert.match(html, /workspace\.js/);
   assert.match(html, /monetization\.js/);
 });
 
@@ -25,7 +24,7 @@ test('console state bridge observes real Dev30 API responses only', async () => 
 });
 
 test('console presentation keeps Stitch personality but removes unsupported mock product claims', async () => {
-  const source = `${await read('public/console-ui.js')}\n${await read('public/console-ui.css')}`;
+  const source = `${await read('public/console-ui.js')}\n${await read('public/console-ui.css')}\n${await read('public/console-ui-polish.css')}`;
   assert.match(source, /DEV30_SCANNER/);
   assert.match(source, /SAVE POINT TIMELINE/);
   assert.match(source, /EVIDENCE_PIPELINE/);
@@ -53,7 +52,10 @@ test('pricing and legal surfaces share the console visual system', async () => {
 
 test('console layer preserves reduced-motion accessibility and responsive side rail fallback', async () => {
   const css = await read('public/console-ui.css');
+  const polish = await read('public/console-ui-polish.css');
   assert.match(css, /prefers-reduced-motion/);
   assert.match(css, /@media \(max-width: 760px\)/);
   assert.match(css, /\.console-side-rail \{ display:none; \}/);
+  assert.match(polish, /report-open \.hero/);
+  assert.match(polish, /#visual-journal-stage/);
 });
