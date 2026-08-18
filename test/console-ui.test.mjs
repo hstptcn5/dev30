@@ -8,7 +8,7 @@ test('console UI is loaded as the final presentation layer without replacing Dev
   const html = await read('public/index.html');
   assert.match(html, /console-ui\.css[\s\S]*console-ui-polish\.css/);
   assert.match(html, /app\.js[\s\S]*workspace-journal\.js[\s\S]*console-ui-preload\.js[\s\S]*workspace\.js/);
-  assert.match(html, /portable-output\.js[\s\S]*console-ui\.js[\s\S]*console-ui-route\.js/);
+  assert.match(html, /portable-output\.js[\s\S]*console-ui\.js[\s\S]*console-ui-route\.js[\s\S]*console-export-modal\.js/);
   assert.match(html, /monetization\.js/);
 });
 
@@ -54,11 +54,19 @@ test('shared client and founder reports become stakeholder artifacts without cha
   assert.match(report, /\/api\/client-report/);
 });
 
-test('portable output is presented as a Stitch-style hardware modal without changing export logic', async () => {
+test('portable output is presented as an accessible Stitch-style hardware modal without changing export logic', async () => {
   const polish = await read('public/console-ui-polish.css');
   assert.match(polish, /portable-menu\[open\] \.portable-menu-panel/);
   assert.match(polish, /EXPORT_ANALYSIS_SNAPSHOT/);
-  assert.match(polish, /100vmax/);
+  assert.match(polish, /console-export-backdrop/);
+  assert.match(polish, /console-export-close/);
+
+  const modal = await read('public/console-export-modal.js');
+  assert.match(modal, /Close export dialog/);
+  assert.match(modal, /event\.key === 'Escape'/);
+  assert.match(modal, /backdrop\.addEventListener\('click', closeAll\)/);
+  assert.doesNotMatch(modal, /\/api\//);
+
   const source = await read('public/portable-output.js');
   assert.match(source, /'PDF report'/);
   assert.match(source, /'Markdown'/);
