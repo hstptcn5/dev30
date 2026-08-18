@@ -209,13 +209,18 @@ function simplifyWeekly(settings) {
     if (kicker) kicker.textContent = 'Live preview';
     $('.ui-weekly-upgrade', preview)?.classList.add('ui-trim-hidden');
   }
+  automation.dataset.uiWeeklySimplified = 'true';
 }
 
 let workspaceSimplifyLoading = false;
 async function simplifyWorkspace() {
   if (location.pathname !== '/workspace' || workspaceSimplifyLoading) return;
-  if (!$('.workspace-hero') || !$('.visual-journal-stage') || !$('#automation')) return;
-  if (document.body.dataset.uiSimplified === 'true' && $('.ui-latest-meta') && $('.visual-weekly-preview')) return;
+  const automation = $('#automation');
+  if (!$('.workspace-hero') || !automation || !$('.visual-weekly-preview', automation)) return;
+  const hadSnapshots = document.body.dataset.uiHasSnapshots === 'true';
+  const stageDone = !hadSnapshots || $('.visual-journal-stage')?.dataset.uiSimplified === 'true';
+  if (document.body.dataset.uiSimplified === 'true' && automation.dataset.uiWeeklySimplified === 'true' && stageDone && (!hadSnapshots || $('.ui-latest-meta'))) return;
+
   workspaceSimplifyLoading = true;
   try {
     const [workspaceResponse, settingsResponse] = await Promise.all([
@@ -228,11 +233,20 @@ async function simplifyWorkspace() {
       settingsResponse.json().catch(() => null),
     ]);
     if (!workspace || !settings) return;
+
+    const hasSnapshots = (workspace.snapshots || []).length > 0;
+    document.body.dataset.uiHasSnapshots = hasSnapshots ? 'true' : 'false';
     trimOnboarding(workspace);
-    normalizeTimeline(workspace);
-    trimWorkDna(workspace);
-    compactSnapshotOverview(workspace, settings);
-    trimRecentHistory(workspace);
+    if (hasSnapshots) {
+      const stage = $('.visual-journal-stage');
+      if (stage) {
+        normalizeTimeline(workspace);
+        trimWorkDna(workspace);
+        stage.dataset.uiSimplified = 'true';
+      }
+      compactSnapshotOverview(workspace, settings);
+      trimRecentHistory(workspace);
+    }
     simplifyWeekly(settings);
     document.body.dataset.uiSimplified = 'true';
   } finally {
