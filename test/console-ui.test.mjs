@@ -12,13 +12,15 @@ test('console UI is loaded as the final presentation layer without replacing Dev
   assert.match(html, /monetization\.js/);
 });
 
-test('console state bridge observes real Dev30 API responses only', async () => {
+test('console state bridge observes real Dev30 API responses only and emits after response consumers render', async () => {
   const source = await read('public/console-ui-preload.js');
   assert.match(source, /\/api\/analyze/);
   assert.match(source, /\/api\/workspace/);
   assert.match(source, /\/api\/workspace-settings/);
   assert.match(source, /dev30:analysis-rendered/);
   assert.match(source, /dev30:workspace-rendered/);
+  assert.match(source, /setTimeout\(/);
+  assert.doesNotMatch(source, /queueMicrotask/);
   assert.doesNotMatch(source, /deepseek\.com|revenuecat\.com|resend\.com|supabase\.co/i);
   assert.doesNotMatch(source, /Authorization\s*:/i);
 });
@@ -42,6 +44,19 @@ test('workspace console is derived from saved snapshots and actual entitlement s
   assert.match(source, /hideDuplicateSnapshotList/);
 });
 
+test('portable output is presented as a Stitch-style hardware modal without changing export logic', async () => {
+  const polish = await read('public/console-ui-polish.css');
+  assert.match(polish, /portable-menu\[open\] \.portable-menu-panel/);
+  assert.match(polish, /EXPORT_ANALYSIS_SNAPSHOT/);
+  assert.match(polish, /100vmax/);
+  const source = await read('public/portable-output.js');
+  assert.match(source, /'PDF report'/);
+  assert.match(source, /'Markdown'/);
+  assert.match(source, /'Copy as Markdown'/);
+  assert.match(source, /'Full JSON data'/);
+  assert.match(source, /'Pixel summary card'/);
+});
+
 test('pricing and legal surfaces share the console visual system', async () => {
   for (const path of ['public/pricing.html', 'public/privacy.html', 'public/terms.html', 'public/refunds.html']) {
     const html = await read(path);
@@ -58,4 +73,5 @@ test('console layer preserves reduced-motion accessibility and responsive side r
   assert.match(css, /\.console-side-rail \{ display:none; \}/);
   assert.match(polish, /report-open \.hero/);
   assert.match(polish, /#visual-journal-stage/);
+  assert.match(polish, /content: attr\(title\)/);
 });
