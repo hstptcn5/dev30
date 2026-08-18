@@ -18,7 +18,7 @@ test('new users are guided through connect, analyze and track without submitting
   assert.match(ux, /Connect GitHub to analyze/);
   assert.match(ux, /dev30-post-connect-draft/);
   assert.match(ux, /event\.stopImmediatePropagation\(\)/);
-  assert.match(ux, /data-dev30-journey/);
+  assert.match(ux, /dev30Journey/);
   assert.match(ux, /Connect GitHub[\s\S]*Analyze recent work[\s\S]*Keep the journal going/);
 });
 
