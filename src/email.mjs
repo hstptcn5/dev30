@@ -28,26 +28,38 @@ function itemList(items) {
 export function renderStakeholderEmail(saved, { appBaseUrl = '', unsubscribeUrl = '' } = {}) {
   const report = saved.report || {};
   const title = report.title || `Dev30 update — ${saved.username}`;
-  const reportUrl = saved.shareable && appBaseUrl ? `${String(appBaseUrl).replace(/\/+$/, '')}/r/${saved.id}` : '';
+  const baseUrl = appBaseUrl ? String(appBaseUrl).replace(/\/+$/, '') : '';
+  const reportUrl = saved.shareable && baseUrl ? `${baseUrl}/r/${saved.id}` : '';
+  const workspaceUrl = baseUrl ? `${baseUrl}/workspace` : '';
+  const primaryUrl = reportUrl || workspaceUrl;
+  const primaryLabel = reportUrl ? 'Open evidence-backed report' : 'Open Dev30 workspace';
   const html = [
     '<!doctype html><html><body style="font-family:ui-sans-serif,system-ui,-apple-system,Segoe UI,sans-serif;color:#111827;line-height:1.6;max-width:720px;margin:0 auto;padding:28px">',
-    `<h1 style="font-size:24px">${escapeHtml(title)}</h1>`,
-    `<p>${escapeHtml(report.executiveSummary || '')}</p>`,
+    '<div style="font-size:12px;font-weight:800;letter-spacing:.12em;text-transform:uppercase;color:#2563eb;margin-bottom:14px">Dev30 weekly briefing</div>',
+    `<h1 style="font-size:24px;margin:0 0 10px">${escapeHtml(title)}</h1>`,
+    `<p style="font-size:16px;color:#374151">${escapeHtml(report.executiveSummary || '')}</p>`,
     '<h2 style="font-size:18px">What shipped</h2>',
     itemList(report.shipped),
     '<h2 style="font-size:18px">What changed</h2>',
     itemList(report.changedSinceLast),
     '<h2 style="font-size:18px">Current direction</h2>',
     `<p>${escapeHtml(report.currentDirection || '')}</p>`,
-    reportUrl ? `<p><a href="${escapeHtml(reportUrl)}">Open evidence-backed report</a></p>` : '',
+    primaryUrl ? `<p style="margin:26px 0"><a href="${escapeHtml(primaryUrl)}" style="display:inline-block;background:#111827;color:#ffffff;text-decoration:none;font-weight:700;padding:11px 16px;border-radius:10px">${escapeHtml(primaryLabel)}</a></p>` : '',
+    reportUrl && workspaceUrl ? `<p style="font-size:13px"><a href="${escapeHtml(workspaceUrl)}">Open your Dev30 workspace</a></p>` : '',
     `<p style="color:#6b7280;font-size:12px">${escapeHtml(report.note || 'Generated from observed GitHub evidence by Dev30.')}</p>`,
     unsubscribeUrl ? `<p style="color:#6b7280;font-size:12px"><a href="${escapeHtml(unsubscribeUrl)}">Disable weekly Dev30 email</a></p>` : '',
     '</body></html>',
   ].join('');
+  const textBase = saved.markdown || `${title}\n\n${report.executiveSummary || ''}`;
+  const textLinks = [
+    primaryUrl ? `${primaryLabel}: ${primaryUrl}` : '',
+    reportUrl && workspaceUrl ? `Dev30 workspace: ${workspaceUrl}` : '',
+    unsubscribeUrl ? `Disable weekly Dev30 email: ${unsubscribeUrl}` : '',
+  ].filter(Boolean).join('\n');
   return {
     subject: title,
     html,
-    text: saved.markdown || `${title}\n\n${report.executiveSummary || ''}`,
+    text: textLinks ? `${textBase}\n\n${textLinks}` : textBase,
   };
 }
 
