@@ -116,7 +116,6 @@ function decorateQuietWorkspace() {
 let scannerStartedAt = 0;
 let scannerTimer = null;
 let wasAnalyzing = false;
-let lastCompletionKey = '';
 
 function scannerNode() {
   let scanner = $('#pixel-scanner');
@@ -128,7 +127,7 @@ function scannerNode() {
   scanner.setAttribute('aria-live', 'polite');
   const bot = pixelBot({ mood: 'scan' });
   const copy = E('div', 'pixel-scanner-copy');
-  copy.append(E('span', 'pixel-scanner-code', 'SCAN_GITHUB'), E('strong', 'pixel-scanner-title', 'Reading the recent activity trail'), E('small', 'pixel-scanner-note', 'Dev30 scanner is active. These labels show the current scan animation, not separate server jobs.'));
+  copy.append(E('span', 'pixel-scanner-code', 'SCAN_GITHUB'), E('strong', 'pixel-scanner-title', 'Reading the recent activity trail'), E('small', 'pixel-scanner-note', 'Progress labels are visual scan stages while the analysis runs.'));
   const meter = E('div', 'pixel-scanner-meter');
   for (let i = 0; i < SCANNER_PHASES.length; i += 1) meter.append(E('span', 'pixel-meter-cell'));
   scanner.append(bot, copy, meter);
@@ -181,9 +180,6 @@ function completionToast() {
   if (!report || report.classList.contains('hidden')) return;
   const title = $('.history-title', report)?.textContent?.trim() || '';
   const saved = /saved as a new snapshot|luu thanh snapshot moi/i.test(normalize(title));
-  const key = `${location.pathname}|${title}|${$('#username')?.value || ''}`;
-  if (key === lastCompletionKey) return;
-  lastCompletionKey = key;
 
   const toast = E('div', 'pixel-completion-toast');
   toast.append(pixelBot({ compact: true, mood: 'happy' }));
