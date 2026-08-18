@@ -88,6 +88,19 @@ body.console-ui .portable-menu > summary {
   text-transform: uppercase;
 }
 
+.console-export-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 10010;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  background: rgba(9, 15, 12, .62);
+  cursor: default;
+}
+
+body.console-modal-open { overflow: hidden; }
+
 body.console-ui .portable-menu[open] .portable-menu-panel {
   position: fixed !important;
   z-index: 10020 !important;
@@ -101,7 +114,7 @@ body.console-ui .portable-menu[open] .portable-menu-panel {
   transform: translate(-50%, -50%) !important;
   border: 4px solid var(--console-ink) !important;
   background: var(--console-canvas) !important;
-  box-shadow: 0 0 0 100vmax rgba(9, 15, 12, .62), 7px 7px 0 var(--console-ink) !important;
+  box-shadow: 7px 7px 0 var(--console-ink) !important;
   padding: 48px 14px 14px !important;
 }
 
@@ -114,12 +127,34 @@ body.console-ui .portable-menu[open] .portable-menu-panel::before {
   min-height: 36px;
   display: flex;
   align-items: center;
-  padding: 0 12px;
+  padding: 0 48px 0 12px;
   border-bottom: 2px solid var(--console-ink);
   background: var(--console-green-soft);
   color: var(--console-ink);
   font: 900 10px/1 ui-monospace, monospace;
   letter-spacing: .08em;
+}
+
+body.console-ui .console-export-close {
+  position: absolute;
+  z-index: 2;
+  top: 5px;
+  right: 6px;
+  width: 26px;
+  height: 26px;
+  display: grid;
+  place-items: center;
+  padding: 0 !important;
+  border: 2px solid var(--console-ink) !important;
+  background: #fff !important;
+  color: var(--console-ink) !important;
+  box-shadow: 2px 2px 0 var(--console-ink);
+  font: 900 18px/1 ui-monospace, monospace !important;
+  cursor: pointer;
+}
+
+body.console-ui .console-export-close:hover {
+  background: #ffdad6 !important;
 }
 
 body.console-ui .portable-menu-panel button {
