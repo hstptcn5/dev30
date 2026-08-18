@@ -78,9 +78,10 @@ function showToast(message, { action = null } = {}) {
   const copy = E('div', 'paid-beta-toast-copy');
   copy.append(E('strong', '', 'Dev30'), E('span', '', friendlyMessage(message)));
   const actions = E('div', 'paid-beta-toast-actions');
-  if (action?.href) {
-    const link = E('a', 'paid-beta-toast-action', action.label || 'Continue');
-    link.href = action.href;
+  const automaticAction = action || errorAction(message);
+  if (automaticAction?.type === 'link' && automaticAction.href) {
+    const link = E('a', 'paid-beta-toast-action', automaticAction.label || 'Continue');
+    link.href = automaticAction.href;
     actions.append(link);
   }
   const dismiss = E('button', 'paid-beta-toast-dismiss', 'Dismiss');
@@ -189,10 +190,12 @@ function enhancePrivatePlanState() {
   const label = wrap.querySelector('span');
   if (state.plan === 'free') {
     wrap.classList.add('paid-beta-pro-locked');
-    if (label) label.textContent = 'Include my private repositories · Pro';
+    const text = 'Include my private repositories · Pro';
+    if (label && label.textContent !== text) label.textContent = text;
   } else if (state.plan === 'pro') {
     wrap.classList.remove('paid-beta-pro-locked');
-    if (label) label.textContent = 'Include my private repositories';
+    const text = 'Include my private repositories';
+    if (label && label.textContent !== text) label.textContent = text;
   }
 }
 
@@ -201,7 +204,7 @@ function installPrivateGuard() {
     if (event.target?.id !== 'private-toggle' || !event.target.checked || state.plan !== 'free') return;
     event.target.checked = false;
     showToast('Private repositories are included with Dev30 Pro. Public GitHub analysis stays available on Free.', {
-      action: { href: pricingHref(), label: 'See Pro' },
+      action: { type: 'link', href: pricingHref(), label: 'See Pro' },
     });
   }, true);
 }
@@ -209,11 +212,10 @@ function installPrivateGuard() {
 function polishStatus() {
   const status = $('#status');
   if (!status || status.classList.contains('hidden') || !status.classList.contains('error')) return;
-  if (status.dataset.paidBetaFriendly === '1') return;
+  if (status.querySelector('.paid-beta-status-copy')) return;
   const original = status.textContent.trim();
   const friendly = friendlyMessage(original);
   const action = errorAction(original);
-  status.dataset.paidBetaFriendly = '1';
   status.dataset.originalError = original;
   status.replaceChildren(E('span', 'paid-beta-status-copy', friendly));
   if (action?.type === 'link') {
@@ -231,10 +233,7 @@ function polishStatus() {
 function observeStatus() {
   const status = $('#status');
   if (!status) return;
-  new MutationObserver(() => {
-    if (!status.classList.contains('error')) delete status.dataset.paidBetaFriendly;
-    polishStatus();
-  }).observe(status, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
+  new MutationObserver(polishStatus).observe(status, { childList: true, subtree: true, attributes: true, attributeFilter: ['class'] });
   polishStatus();
 }
 
@@ -394,21 +393,40 @@ function enhanceSharedReport() {
 async function bootAuthState() {
   ensureConnectNav();
   ensureJourney();
+  const analyzeButton = $('#analyze-button');
+  if (analyzeButton) {
+    analyzeButton.disabled = true;
+    analyzeButton.textContent = 'Checking GitHub…';
+  }
   try {
     const response = await fetch('/api/auth/status', { cache: 'no-store' });
     const auth = await response.json();
     if (!auth.connected) {
+      if (auth.githubAppConfigured === false) {
+        setConnectionState('unavailable');
+        if (analyzeButton) {
+          analyzeButton.disabled = true;
+          analyzeButton.textContent = 'GitHub connection unavailable';
+        }
+        return;
+      }
       setConnectionState('disconnected');
       const nav = ensureConnectNav();
       nav?.classList.remove('hidden');
-      const button = $('#analyze-button');
-      if (button) button.textContent = 'Connect GitHub to analyze';
+      if (analyzeButton) {
+        analyzeButton.disabled = false;
+        analyzeButton.textContent = 'Connect GitHub to analyze';
+      }
       setJourneyStep('connect', 'active');
       return;
     }
 
     setConnectionState('connected');
     ensureConnectNav()?.classList.add('hidden');
+    if (analyzeButton) {
+      analyzeButton.disabled = false;
+      analyzeButton.textContent = 'See their work';
+    }
     setJourneyStep('connect', 'done');
     setJourneyStep('analyze', 'active');
     const settingsResponse = await fetch('/api/workspace-settings', { cache: 'no-store' }).catch(() => null);
@@ -425,6 +443,10 @@ async function bootAuthState() {
     }
   } catch {
     setConnectionState('unavailable');
+    if (analyzeButton) {
+      analyzeButton.disabled = false;
+      analyzeButton.textContent = 'See their work';
+    }
   }
 }
 
