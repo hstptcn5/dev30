@@ -39,20 +39,26 @@ function evidenceMarkdown(item) {
   const prefix = id ? `**[${id}]** ` : '';
   return url ? `- ${prefix}[${label}](${url}) — ${item?.date || ''}` : `- ${prefix}${label} — ${item?.date || ''}`;
 }
-function collectReferencedEvidenceIds(portable) {
-  const ids = new Set();
-  const add = (value) => { for (const id of safeArray(value)) if (text(id)) ids.add(text(id)); };
-  add(portable?.mainFocus?.evidenceIds);
-  for (const project of safeArray(portable?.projects)) add(project?.evidenceIds);
-  for (const observation of safeArray(portable?.observations)) add(observation?.evidenceIds);
-  for (const signal of safeArray(portable?.technical?.signals)) add(signal?.evidenceIds);
-  return ids;
+function collectEvidenceWeights(portable) {
+  const weights = new Map();
+  const add = (values, score) => {
+    for (const raw of safeArray(values)) {
+      const id = text(raw);
+      if (!id) continue;
+      weights.set(id, Math.max(Number(weights.get(id) || 0), score));
+    }
+  };
+  add(portable?.mainFocus?.evidenceIds, 4);
+  for (const project of safeArray(portable?.projects)) add(project?.evidenceIds, 3);
+  for (const observation of safeArray(portable?.observations)) add(observation?.evidenceIds, 2);
+  for (const signal of safeArray(portable?.technical?.signals)) add(signal?.evidenceIds, 1);
+  return weights;
 }
 export function selectKeyEvidence(portable, limit = KEY_EVIDENCE_LIMIT) {
   const evidence = safeArray(portable?.evidence);
-  const referenced = collectReferencedEvidenceIds(portable);
-  const ranked = evidence.map((item, index) => ({ item, index, referenced: referenced.has(evidenceId(item)) ? 1 : 0 }))
-    .sort((a, b) => b.referenced - a.referenced || a.index - b.index);
+  const weights = collectEvidenceWeights(portable);
+  const ranked = evidence.map((item, index) => ({ item, index, weight: Number(weights.get(evidenceId(item)) || 0) }))
+    .sort((a, b) => b.weight - a.weight || a.index - b.index);
   const seen = new Set();
   const result = [];
   for (const entry of ranked) {
