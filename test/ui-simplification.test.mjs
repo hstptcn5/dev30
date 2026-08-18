@@ -20,6 +20,25 @@ test('two empty snapshots do not produce a fake focus move', () => {
   assert.doesNotMatch(summary.title, /Focus moved/);
 });
 
+test('a real focus going quiet is not described as moving to an empty label', () => {
+  const summary = changeSummary(
+    { mainFocus: { repo: 'Không có' } },
+    { mainFocus: { repo: 'dev30' } },
+  );
+  assert.equal(summary.kind, 'quiet');
+  assert.equal(summary.title, 'No current development focus detected');
+  assert.doesNotMatch(summary.title, /Không có/);
+});
+
+test('a focus appearing after an empty snapshot is described as a new focus', () => {
+  const summary = changeSummary(
+    { mainFocus: { repo: 'dev30' } },
+    { mainFocus: { repo: 'Unknown' } },
+  );
+  assert.equal(summary.kind, 'emerged');
+  assert.equal(summary.title, 'New focus: dev30');
+});
+
 test('real focus change remains visible', () => {
   const summary = changeSummary(
     { mainFocus: { repo: 'dev30' } },
